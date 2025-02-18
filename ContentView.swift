@@ -1,219 +1,221 @@
 import SwiftUI
+import QuartzCore
 
 struct ContentView: View {
-    @State private var isListening = false
-    @State private var animationPhase = 0.0
-    @State private var waveformPhase = 0.0
-    
-    let backgroundColor = Color(hex: "#021826")
-    let buttonColor = Color(hex: "#05BFDB")
-    let auraColors = [
-        Color(hex: "#0E6BA8"),
-        Color(hex: "#0A9396"),
-        Color(hex: "#06D6A0"),
-        Color(hex: "#118AB2"),
-        Color(hex: "#073B4C")
-    ]
-    
-    let timer = Timer.publish(every: 0.016, on: .main, in: .common).autoconnect()
+    @State private var isAwake = false
+    @State private var isTransitioning = false
+    @State private var drawingPath = Path()
+    @State private var points: [CGPoint] = []
+    @State private var breathingScale: CGFloat = 1.0
     
     var body: some View {
-        NavigationView {
-            ZStack {
-                backgroundColor
-                    .ignoresSafeArea()
-                
-                VStack(spacing: 0) {
-                    // Settings icon
-                    HStack {
-                        Spacer()
-                        NavigationLink(destination: Text("Settings Page")) {
-                            Image(systemName: "gearshape.fill")
-                                .font(.title2)
-                                .foregroundColor(.white)
-                                .opacity(0.9)
-                                .padding()
-                        }
-                    }
-                    
-                    // Label
-                    Text(isListening ? "Tap to stop EchoWare" : "Tap to start EchoWare")
-                        .foregroundColor(.white)
-                        .font(.headline)
-                        .opacity(0.9)
-                        .padding(.top, 8)
-                    
-                    Spacer()
-                    
-                    // Main button and aura
-                    ZStack {
-                        if isListening {
-                            // Outer aura layers
-                            Group {
-                                ForEach(0..<5) { index in
-                                    AuraLayer(
-                                        color: auraColors[index],
-                                        scale: 1.2 + Double(index) * 0.1 + sin(animationPhase * 0.02 + Double(index) * 0.5) * 0.2,
-                                        opacity: 0.15
-                                    )
-                                    .blur(radius: CGFloat(15 + index * 5))
-                                }
-                            }
-                            
-                            // Refined inner glow - multiple subtle layers
-                            Group {
-                                // Soft gradient edge
-                                Circle()
-                                    .stroke(
-                                        LinearGradient(
-                                            gradient: Gradient(colors: [
-                                                buttonColor.opacity(0.3),
-                                                buttonColor.opacity(0)
-                                            ]),
-                                            startPoint: .center,
-                                            endPoint: .top
-                                        ),
-                                        lineWidth: 0.5
-                                    )
-                                    .scaleEffect(1.02)
-                                    .blur(radius: 2)
-                                
-                                // Very subtle outer ring
-                                Circle()
-                                    .stroke(buttonColor.opacity(0.1), lineWidth: 0.2)
-                                    .scaleEffect(1.03)
-                                    .blur(radius: 1)
-                                
-                                // Soft glow around button
-                                Circle()
-                                    .fill(
-                                        RadialGradient(
-                                            gradient: Gradient(colors: [
-                                                buttonColor.opacity(0.2),
-                                                buttonColor.opacity(0)
-                                            ]),
-                                            center: .center,
-                                            startRadius: 70,
-                                            endRadius: 90
-                                        )
-                                    )
-                                    .scaleEffect(1.1)
-                            }
-                        }
-                        
-                        // Main button
-                        Button(action: {
-                            withAnimation(.easeInOut(duration: 0.3)) {
-                                isListening.toggle()
-                            }
-                        }) {
-                            Circle()
-                                .fill(buttonColor)
-                                .frame(width: 150, height: 150)
-                                .overlay(
-                                    Group {
-                                        if isListening {
-                                            // Animated waveform
-                                            HStack(spacing: 4) {
-                                                ForEach(0..<5) { index in
-                                                    RoundedRectangle(cornerRadius: 2)
-                                                        .fill(Color.white)
-                                                        .frame(width: 4, height: getWaveformHeight(index: index))
-                                                        .animation(
-                                                            Animation.easeInOut(duration: 0.5)
-                                                                .repeatForever()
-                                                                .delay(Double(index) * 0.1),
-                                                            value: waveformPhase
-                                                        )
-                                                }
-                                            }
-                                        } else {
-                                            Image(systemName: "power")
-                                                .font(.system(size: 40))
-                                                .foregroundColor(.white)
-                                        }
-                                    }
-                                )
-                                .shadow(
-                                    color: buttonColor.opacity(isListening ? 0.4 : 0.2),
-                                    radius: isListening ? 12 : 8
-                                )
-                        }
-                    }
-                    .frame(width: 150, height: 150)
-                    
-                    Spacer()
-                    
-                    // Navigation button to ListeningScreen
-                    NavigationLink(destination: ListeningScreen()) {
-                        Text("Next Screen")
-                            .foregroundColor(.white)
-                            .font(.headline)
-                            .padding()
-                            .background(
-                                Capsule()
-                                    .fill(buttonColor.opacity(0.3))
-                            )
-                    }
-                    .padding(.bottom, 40)
-                }
+        ZStack {
+            // Magical background
+            RadialGradient(
+                colors: [
+                    isAwake ? .orange.opacity(0.3) : .blue.opacity(0.2),
+                    .black
+                ],
+                center: .center,
+                startRadius: 5,
+                endRadius: 300
+            )
+            .ignoresSafeArea()
+            
+            // Drawing path for circle gesture
+            drawingPath
+                .stroke(
+                    LinearGradient(
+                        colors: [.blue.opacity(0.5), .purple.opacity(0.5)],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    ),
+                    style: StrokeStyle(lineWidth: 2, lineCap: .round)
+                )
+                .opacity(points.isEmpty ? 0 : 0.7)
+            
+            // Glowing ring beneath fox (keeps its breathing animation)
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [
+                            isAwake ? .orange.opacity(0.3) : .blue.opacity(0.2),
+                            .clear
+                        ],
+                        center: .center,
+                        startRadius: 5,
+                        endRadius: 100
+                    )
+                )
+                .frame(width: 200, height: 200)
+                .scaleEffect(breathingScale)
+            
+            // Fox animation:
+            // In the sleeping state, tapping the fox triggers awakeFox().
+            // In the observing state, a long press will trigger sleepFox() to revert back.
+            if isAwake {
+                ObservingFoxView(onLongPress: sleepFox)
+                    .frame(width: 200, height: 200)
+            } else {
+                SleepingFoxView(onTap: awakeFox)
+                    .frame(width: 200, height: 200)
             }
-            .navigationBarHidden(true)
-        }
-        .onReceive(timer) { _ in
-            if isListening {
-                withAnimation(.linear(duration: 0.016)) {
-                    animationPhase += 1
-                    waveformPhase += 1
-                }
+            
+            // Status text
+            VStack {
+                Spacer()
+                Text(isAwake ? "Listening for sounds..." : "Tap the fox or draw a circle to awaken")
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundColor(.white)
+                    .padding(.bottom, 50)
             }
         }
-    }
-    
-    func getWaveformHeight(index: Int) -> CGFloat {
-        let baseHeight: CGFloat = 30
-        let variance: CGFloat = 20
-        return baseHeight + variance * sin(waveformPhase * 0.1 + Double(index) * 0.5)
-    }
-}
-
-// AuraLayer helper view
-struct AuraLayer: View {
-    let color: Color
-    let scale: Double
-    let opacity: Double
-    
-    var body: some View {
-        Circle()
-            .fill(color)
-            .opacity(opacity)
-            .scaleEffect(scale)
-    }
-}
-
-// Color extension for hex support
-extension Color {
-    init(hex: String) {
-        let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
-        var int: UInt64 = 0
-        Scanner(string: hex).scanHexInt64(&int)
-        let a, r, g, b: UInt64
-        switch hex.count {
-        case 3: // RGB (12-bit)
-            (a, r, g, b) = (255, (int >> 8) * 17, (int >> 4 & 0xF) * 17, (int & 0xF) * 17)
-        case 6: // RGB (24-bit)
-            (a, r, g, b) = (255, int >> 16, int >> 8 & 0xFF, int & 0xFF)
-        case 8: // ARGB (32-bit)
-            (a, r, g, b) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
-        default:
-            (a, r, g, b) = (1, 1, 1, 0)
-        }
-        self.init(
-            .sRGB,
-            red: Double(r) / 255,
-            green: Double(g) / 255,
-            blue:  Double(b) / 255,
-            opacity: Double(a) / 255
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { value in
+                    let point = value.location
+                    points.append(point)
+                    
+                    drawingPath = Path { path in
+                        guard let firstPoint = points.first else { return }
+                        path.move(to: firstPoint)
+                        for point in points.dropFirst() {
+                            path.addLine(to: point)
+                        }
+                    }
+                }
+                .onEnded { _ in
+                    if isCircular(points) && !isAwake {
+                        awakeFox()
+                    }
+                    withAnimation {
+                        points.removeAll()
+                        drawingPath = Path()
+                    }
+                }
         )
+        .onAppear {
+            startBreathingAnimation() // Only the glowing ring still "breathes"
+        }
     }
+    
+    private func awakeFox() {
+        // Transition from sleeping to observing state
+        withAnimation(.spring(response: 0.6, dampingFraction: 0.7)) {
+            isTransitioning = true
+        }
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            withAnimation(.spring(response: 0.6, dampingFraction: 0.7)) {
+                isAwake = true
+            }
+        }
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
+            withAnimation { isTransitioning = false }
+        }
+    }
+    
+    private func sleepFox() {
+        // Transition back from observing to sleeping state when long pressed.
+        withAnimation(.spring(response: 0.6, dampingFraction: 0.7)) {
+            isAwake = false
+        }
+    }
+    
+    private func startBreathingAnimation() {
+        // This animation only affects the glowing ring.
+        withAnimation(
+            .easeInOut(duration: 2)
+                .repeatForever(autoreverses: true)
+        ) {
+            breathingScale = 1.05
+        }
+    }
+    
+    private func isCircular(_ points: [CGPoint]) -> Bool {
+        guard points.count >= 20 else { return false }
+        
+        let center = points.reduce(.zero) { $0 + $1 } / CGFloat(points.count)
+        let avgRadius = points.map { $0.distance(to: center) }
+            .reduce(0, +) / CGFloat(points.count)
+        
+        return points.allSatisfy { point in
+            let distance = point.distance(to: center)
+            return abs(distance - avgRadius) < 30
+        }
+    }
+}
+
+// SleepingFoxView animates frames 1–11 (from asset names "1", "2", … "11") and triggers onTap to awaken.
+struct SleepingFoxView: View {
+    var onTap: () -> Void
+    @State private var currentFrame = 1
+    private let totalFrames = 11
+    // Run updates every 0.1 seconds (10 FPS) for smooth animation.
+    private let animationTimer = Timer.publish(every: 0.1, on: .main, in: .common).autoconnect()
+    
+    var body: some View {
+        Image("\(currentFrame)")  // Using asset names "1", "2", ..., "11"
+            .resizable()
+            .scaledToFit()
+            .frame(width: 120, height: 120)
+            .onTapGesture { onTap() }
+            .onReceive(animationTimer) { _ in
+                currentFrame = currentFrame < totalFrames ? currentFrame + 1 : 1
+            }
+    }
+}
+
+// ObservingFoxView animates frames 12–20 (using asset names "12", "13", ... "20") and triggers onLongPress to sleep.
+struct ObservingFoxView: View {
+    var onLongPress: () -> Void
+    @State private var currentFrame = 12
+    private let totalFrames = 20
+    // Run updates every 0.1 seconds (10 FPS) for smooth animation.
+    private let animationTimer = Timer.publish(every: 0.1, on: .main, in: .common).autoconnect()
+    
+    var body: some View {
+        Image("\(String(format: "%02d", currentFrame))")
+            .resizable()
+            .scaledToFit()
+            .frame(width: 120, height: 120)
+            .onReceive(animationTimer) { _ in
+                currentFrame = currentFrame < totalFrames ? currentFrame + 1 : 12
+            }
+            .onLongPressGesture(minimumDuration: 0.5) {
+                onLongPress()
+            }
+    }
+}
+
+// Helper shape for ears and nose (if needed elsewhere in your views)
+struct Triangle: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.midX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+        path.closeSubpath()
+        return path
+    }
+}
+
+// Helper extensions
+extension CGPoint {
+    static func +(lhs: CGPoint, rhs: CGPoint) -> CGPoint {
+        CGPoint(x: lhs.x + rhs.x, y: lhs.y + rhs.y)
+    }
+    
+    static func /(lhs: CGPoint, rhs: CGFloat) -> CGPoint {
+        CGPoint(x: lhs.x / rhs, y: lhs.y / rhs)
+    }
+    
+    func distance(to point: CGPoint) -> CGFloat {
+        sqrt(pow(x - point.x, 2) + pow(y - point.y, 2))
+    }
+}
+
+#Preview {
+    ContentView()
 }
