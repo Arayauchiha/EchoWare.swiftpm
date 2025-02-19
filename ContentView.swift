@@ -3,7 +3,7 @@ import QuartzCore
 
 struct ObservingFoxView: View {
     let onLongPress: () -> Void
-    @State private var currentImageIndex = 12  // Starting from alert mode frame 12
+    @State private var currentImageIndex = 12  // Alert mode frames are 12–20
     let timer = Timer.publish(every: 0.1, on: .main, in: .common).autoconnect()
     
     var body: some View {
@@ -16,13 +16,12 @@ struct ObservingFoxView: View {
                         onLongPress()
                     }
             )
+            // Update image frames WITHOUT an animation block so that the frame change is immediate.
             .onReceive(timer) { _ in
-                withAnimation {
-                    if currentImageIndex < 20 {
-                        currentImageIndex += 1
-                    } else {
-                        currentImageIndex = 12  // Reset to first alert frame
-                    }
+                if currentImageIndex < 20 {
+                    currentImageIndex += 1
+                } else {
+                    currentImageIndex = 12
                 }
             }
     }
@@ -30,23 +29,20 @@ struct ObservingFoxView: View {
 
 struct SleepingFoxView: View {
     let onTap: () -> Void
-    @State private var currentImageIndex = 1  // Awake fox (1-9)
-    let timer = Timer.publish(every: 0.1, on: .main, in: .common).autoconnect()
+    @State private var currentImageIndex = 1  // Awake fox frames are 1–9
+    let timer = Timer.publish(every: 0.15, on: .main, in: .common).autoconnect()
     
     var body: some View {
         Image("\(currentImageIndex)")
             .resizable()
             .aspectRatio(contentMode: .fit)
-            .onTapGesture {
-                onTap()
-            }
+            .onTapGesture { onTap() }
+            // Update image frames immediately (no withAnimation here) for smooth frame transitions.
             .onReceive(timer) { _ in
-                withAnimation {
-                    if currentImageIndex < 9 {
-                        currentImageIndex += 1
-                    } else {
-                        currentImageIndex = 1
-                    }
+                if currentImageIndex < 9 {
+                    currentImageIndex += 1
+                } else {
+                    currentImageIndex = 1
                 }
             }
     }
@@ -57,18 +53,19 @@ struct ContentView: View {
     @State private var isTransitioning = false
     @State private var showSpeechBubble = false
     @State private var speechMessage = ""
-    
+    @State private var isFirstTime = true
+
     var body: some View {
         ZStack {
             GeometryReader { geometry in
-                // Switch between night and day background images
+                // Background images
                 if isAwake {
                     Image("dayBG")
                         .resizable()
                         .aspectRatio(contentMode: .fill)
                         .frame(width: geometry.size.width, height: geometry.size.height)
                         .clipped()
-                        .position(x: geometry.size.width/2, y: geometry.size.height/2)
+                        .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
                         .transition(.opacity)
                         .overlay(
                             // Daytime atmosphere enhancement
@@ -100,7 +97,7 @@ struct ContentView: View {
                         .aspectRatio(contentMode: .fill)
                         .frame(width: geometry.size.width, height: geometry.size.height)
                         .clipped()
-                        .position(x: geometry.size.width/2, y: geometry.size.height/2)
+                        .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
                         .transition(.opacity)
                         .overlay(
                             // Night atmosphere enhancement
@@ -278,25 +275,24 @@ struct ContentView: View {
                     x: isAwake ? geometry.size.width * 0.8 : geometry.size.width * 0.2,
                     y: geometry.size.height * 0.2
                 )
+                .animation(.spring(response: 0.6, dampingFraction: 0.7), value: isAwake)
             }
             .edgesIgnoringSafeArea(.all)
             
             VStack {
                 Spacer()
                 
-                // Speech bubble
+                // Speech bubble display
                 if showSpeechBubble {
                     SpeechBubbleView(message: speechMessage)
                         .transition(.scale.combined(with: .opacity))
-                } else if !isAwake {
-                    // Initial instruction in speech bubble
+                } else if !isAwake && isFirstTime {
                     SpeechBubbleView(message: "Hey! 👋 Tap me to wake me up and I'll guard your space! 🦊")
                         .transition(.scale.combined(with: .opacity))
                 }
                 
-                // Fox with enhanced shadow
+                // Fox container with bench shadow
                 ZStack {
-                    // Enhanced shadow
                     Ellipse()
                         .fill(Color.black.opacity(0.5))
                         .frame(width: 140, height: 25)
@@ -305,17 +301,14 @@ struct ContentView: View {
                     
                     if isAwake {
                         ObservingFoxView(onLongPress: sleepFox)
-                            .frame(width: 160, height: 165)
+                            .frame(width: 160, height: 160)
                             .offset(y: 30)
                             .onAppear {
-                                // Show sleep instruction after initial messages
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 8) {
                                     speechMessage = "When you need a break, just long press me to let me rest! 😊"
                                     withAnimation {
                                         showSpeechBubble = true
                                     }
-                                    
-                                    // Hide the instruction after a few seconds
                                     DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
                                         withAnimation {
                                             showSpeechBubble = false
@@ -325,15 +318,15 @@ struct ContentView: View {
                             }
                     } else {
                         SleepingFoxView(onTap: awakeFox)
-                            .frame(width: 160, height: 165)
+                            .frame(width: 160, height: 160)
                             .offset(y: 30)
                     }
                 }
                 .frame(height: 180)
-                .padding(.bottom, 100)
+                .padding(.bottom, 100)  // Fixed bottom padding so the fox sits on the bench
                 
                 Spacer()
-                    .frame(height: 40) // Consistent bottom spacing
+                    .frame(height: 40)
             }
         }
     }
@@ -341,15 +334,12 @@ struct ContentView: View {
     private func awakeFox() {
         withAnimation {
             isAwake = true
-            
-            // Show welcome message
+            isFirstTime = false
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 speechMessage = "I'm awake and ready to guard! I'll keep my ears perked for any sounds! 🎧"
                 withAnimation {
                     showSpeechBubble = true
                 }
-                
-                // Hide message after delay
                 DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
                     withAnimation {
                         showSpeechBubble = false
@@ -362,10 +352,8 @@ struct ContentView: View {
     private func sleepFox() {
         withAnimation {
             isAwake = false
-            speechMessage = "Time for me to rest! Just tap me whenever you need me again! 😴"
+            speechMessage = "Time for me to rest! 😴"
             showSpeechBubble = true
-            
-            // Hide sleep message after delay
             DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
                 withAnimation {
                     showSpeechBubble = false
