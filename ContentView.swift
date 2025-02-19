@@ -127,8 +127,8 @@ struct ContentView: View {
                     )
                     .animation(.easeInOut(duration: 0.6), value: isAwake)
                 
-                // Stars overlay with opacity animation
-                ForEach(0..<50) { _ in
+                // Simple static stars
+                ForEach(0..<50, id: \.self) { _ in
                     let size = CGFloat.random(in: 1...3)
                     Circle()
                         .fill(Color.white)
@@ -139,156 +139,142 @@ struct ContentView: View {
                             y: CGFloat.random(in: 0...geometry.size.height * 0.6)
                         )
                         .opacity(isAwake ? 0 : Double.random(in: 0.3...0.8))
-                        .animation(.easeInOut(duration: 0.6), value: isAwake)
                 }
+                .animation(.none, value: showSpeechBubble) // Prevent stars from moving when bubble appears
                 
-                // Enhanced Moon/Sun with more diffused glow
+                // Sun/Moon with transition animation
                 ZStack {
-                    if isAwake {
-                        // Sun rays animation
-                        ForEach(0..<8) { index in
-                            let angle = Double(index) * .pi / 4
-                            Rectangle()
+                    // Moon and Sun container
+                    ZStack {
+                        // Moon
+                        Group {
+                            Circle()
+                                .fill(Color.white)
+                                .frame(width: 60, height: 60)
+                                .blur(radius: 2)
+                                .overlay(
+                                    Circle()
+                                        .fill(
+                                            RadialGradient(
+                                                colors: [
+                                                    Color.white.opacity(0.6),
+                                                    Color.white.opacity(0.2),
+                                                    Color.clear
+                                                ],
+                                                center: .center,
+                                                startRadius: 5,
+                                                endRadius: 50
+                                            )
+                                        )
+                                        .frame(width: 100, height: 100)
+                                        .blur(radius: 10)
+                                )
+                        }
+                        .opacity(isAwake ? 0 : 1)
+                        
+                        // Sun
+                        Group {
+                            // Sun rays animation
+                            ForEach(0..<8) { index in
+                                let angle = Double(index) * .pi / 4
+                                Rectangle()
+                                    .fill(
+                                        LinearGradient(
+                                            colors: [
+                                                Color(red: 1, green: 0.85, blue: 0.4).opacity(0.4),
+                                                Color(red: 1, green: 0.85, blue: 0.4).opacity(0.2),
+                                                Color.clear
+                                            ],
+                                            startPoint: .top,
+                                            endPoint: .bottom
+                                        )
+                                    )
+                                    .frame(width: 15, height: 200)
+                                    .rotationEffect(.radians(angle))
+                                    .blur(radius: 15)
+                            }
+                            
+                            // Outer sun glow
+                            Circle()
                                 .fill(
-                                    LinearGradient(
+                                    RadialGradient(
                                         colors: [
-                                            Color(red: 1, green: 0.85, blue: 0.4).opacity(0.4),
-                                            Color(red: 1, green: 0.85, blue: 0.4).opacity(0.2),
+                                            Color(red: 1, green: 0.8, blue: 0.3).opacity(0.5),
+                                            Color(red: 1, green: 0.7, blue: 0.2).opacity(0.3),
+                                            Color(red: 1, green: 0.6, blue: 0.1).opacity(0.1),
                                             Color.clear
                                         ],
-                                        startPoint: .top,
-                                        endPoint: .bottom
+                                        center: .center,
+                                        startRadius: 30,
+                                        endRadius: 150
                                     )
                                 )
-                                .frame(width: 15, height: 200)
-                                .rotationEffect(.radians(angle))
-                                .blur(radius: 15)
+                                .frame(width: 300, height: 300)
+                                .blur(radius: 20)
+                            
+                            // Inner sun glow
+                            Circle()
+                                .fill(
+                                    RadialGradient(
+                                        colors: [
+                                            Color(red: 1, green: 0.95, blue: 0.8),
+                                            Color(red: 1, green: 0.9, blue: 0.4),
+                                            Color(red: 1, green: 0.8, blue: 0.3)
+                                        ],
+                                        center: .center,
+                                        startRadius: 0,
+                                        endRadius: 40
+                                    )
+                                )
+                                .frame(width: 80, height: 80)
+                                .blur(radius: 5)
+                            
+                            // Sun core
+                            Circle()
+                                .fill(Color(red: 1, green: 0.95, blue: 0.6))
+                                .frame(width: 70, height: 70)
                         }
-                        
-                        // Outer sun glow
-                        Circle()
-                            .fill(
-                                RadialGradient(
-                                    colors: [
-                                        Color(red: 1, green: 0.8, blue: 0.3).opacity(0.5),
-                                        Color(red: 1, green: 0.7, blue: 0.2).opacity(0.3),
-                                        Color(red: 1, green: 0.6, blue: 0.1).opacity(0.1),
-                                        Color.clear
-                                    ],
-                                    center: .center,
-                                    startRadius: 30,
-                                    endRadius: 150
-                                )
-                            )
-                            .frame(width: 300, height: 300)
-                            .blur(radius: 20)
-                        
-                        // Inner sun glow
-                        Circle()
-                            .fill(
-                                RadialGradient(
-                                    colors: [
-                                        Color(red: 1, green: 0.95, blue: 0.8),
-                                        Color(red: 1, green: 0.9, blue: 0.4),
-                                        Color(red: 1, green: 0.8, blue: 0.3)
-                                    ],
-                                    center: .center,
-                                    startRadius: 0,
-                                    endRadius: 40
-                                )
-                            )
-                            .frame(width: 80, height: 80)
-                            .blur(radius: 5)
-                        
-                        // Sun core
-                        Circle()
-                            .fill(Color(red: 1, green: 0.95, blue: 0.6))
-                            .frame(width: 70, height: 70)
-                    } else {
-                        // Moon layers with pulsating effect
-                        Circle()
-                            .fill(
-                                RadialGradient(
-                                    colors: [
-                                        Color.white.opacity(0.15),
-                                        Color.white.opacity(0.1),
-                                        Color.white.opacity(0.05),
-                                        Color.clear
-                                    ],
-                                    center: .center,
-                                    startRadius: 30,
-                                    endRadius: 180
-                                )
-                            )
-                            .frame(width: 360, height: 360)
-                            .blur(radius: 30)
-                            .scaleEffect(1 + (isTransitioning ? 0.05 : 0))
-                            .animation(Animation.easeInOut(duration: 2).repeatForever(autoreverses: true), value: isTransitioning)
-                            .onAppear { isTransitioning = true }
-                        
-                        // Middle soft glow with pulsating
-                        Circle()
-                            .fill(
-                                RadialGradient(
-                                    colors: [
-                                        Color.white.opacity(0.3),
-                                        Color.white.opacity(0.2),
-                                        Color.white.opacity(0.1),
-                                        Color.clear
-                                    ],
-                                    center: .center,
-                                    startRadius: 25,
-                                    endRadius: 120
-                                )
-                            )
-                            .frame(width: 240, height: 240)
-                            .blur(radius: 20)
-                            .scaleEffect(1 + (isTransitioning ? 0.03 : 0))
-                            .animation(Animation.easeInOut(duration: 1.5).repeatForever(autoreverses: true), value: isTransitioning)
-                        
-                        // Inner bright glow
-                        Circle()
-                            .fill(
-                                RadialGradient(
-                                    colors: [
-                                        Color.white.opacity(0.8),
-                                        Color.white.opacity(0.6),
-                                        Color.white.opacity(0.4),
-                                        Color.clear
-                                    ],
-                                    center: .center,
-                                    startRadius: 15,
-                                    endRadius: 60
-                                )
-                            )
-                            .frame(width: 120, height: 120)
-                            .blur(radius: 10)
-                        
-                        // Moon core
-                        Circle()
-                            .fill(Color.white)
-                            .frame(width: 60, height: 60)
-                            .blur(radius: 2)
                     }
+                    .opacity(isAwake ? 1 : 0)
                 }
                 .position(
                     x: isAwake ? geometry.size.width * 0.8 : geometry.size.width * 0.2,
                     y: geometry.size.height * 0.2
                 )
-                .animation(.spring(response: 0.6, dampingFraction: 0.7), value: isAwake)
+                .animation(.easeInOut(duration: 0.6), value: isAwake)
             }
             .edgesIgnoringSafeArea(.all)
             
             VStack {
                 Spacer()
                 
-                // Speech bubble display
+                // Speech bubble display with day/night specific messages
                 if showSpeechBubble {
-                    SpeechBubbleView(message: speechMessage)
+                    if isAwake {
+                        // Day time messages only
+                        HStack {
+                            Spacer()
+                            SpeechBubbleView(message: speechMessage)
+                            Spacer()
+                        }
                         .transition(.scale.combined(with: .opacity))
+                    } else {
+                        // Night time messages only
+                        HStack {
+                            Spacer()
+                            SpeechBubbleView(message: "Time for me to rest! 😴")
+                            Spacer()
+                        }
+                        .transition(.scale.combined(with: .opacity))
+                    }
                 } else if !isAwake && isFirstTime {
-                    SpeechBubbleView(message: "Hey! 👋 Tap me to wake me up and I'll guard your space! 🦊")
-                        .transition(.scale.combined(with: .opacity))
+                    // Initial greeting message (night time only)
+                    HStack {
+                        Spacer()
+                        SpeechBubbleView(message: "Hey! 👋 Tap me to wake me up and I'll guard your space! 🦊")
+                        Spacer()
+                    }
+                    .transition(.scale.combined(with: .opacity))
                 }
                 
                 // Fox container with bench shadow
@@ -303,19 +289,6 @@ struct ContentView: View {
                         ObservingFoxView(onLongPress: sleepFox)
                             .frame(width: 160, height: 160)
                             .offset(y: 30)
-                            .onAppear {
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 8) {
-                                    speechMessage = "When you need a break, just long press me to let me rest! 😊"
-                                    withAnimation {
-                                        showSpeechBubble = true
-                                    }
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-                                        withAnimation {
-                                            showSpeechBubble = false
-                                        }
-                                    }
-                                }
-                            }
                     } else {
                         SleepingFoxView(onTap: awakeFox)
                             .frame(width: 160, height: 160)
@@ -335,14 +308,33 @@ struct ContentView: View {
         withAnimation {
             isAwake = true
             isFirstTime = false
+            
+            // First message when fox wakes up
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 speechMessage = "I'm awake and ready to guard! I'll keep my ears perked for any sounds! 🎧"
                 withAnimation {
                     showSpeechBubble = true
                 }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+                
+                // Hide first message after 3 seconds
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
                     withAnimation {
                         showSpeechBubble = false
+                    }
+                    
+                    // Show long press instruction after a short delay
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                        speechMessage = "When you need a break, just long press me to let me rest! 😊"
+                        withAnimation {
+                            showSpeechBubble = true
+                        }
+                        
+                        // Hide instruction message after 3 seconds
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                            withAnimation {
+                                showSpeechBubble = false
+                            }
+                        }
                     }
                 }
             }
@@ -363,7 +355,7 @@ struct ContentView: View {
     }
 }
 
-// Speech Bubble View remains the same
+// Speech Bubble View
 struct SpeechBubbleView: View {
     let message: String
     
@@ -373,21 +365,35 @@ struct SpeechBubbleView: View {
             .background(
                 RoundedRectangle(cornerRadius: 20)
                     .fill(Color.white.opacity(0.95))
-                    .overlay(
-                        Path { path in
-                            path.move(to: CGPoint(x: 100, y: 0))
-                            path.addLine(to: CGPoint(x: 120, y: 20))
-                            path.addLine(to: CGPoint(x: 140, y: 0))
-                            path.closeSubpath()
-                        }
-                        .fill(Color.white.opacity(0.95))
-                        .offset(y: 35)
-                    )
             )
             .foregroundColor(.black)
             .font(.system(size: 16, weight: .medium))
             .frame(maxWidth: 280)
+            .padding(.horizontal, 20)
             .padding(.bottom, 40)
+    }
+}
+
+// Custom shape that combines the bubble and arrow
+struct BubbleShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        
+        // Main bubble rectangle with rounded corners
+        let bubbleRect = CGRect(x: 0, y: 0, width: rect.width, height: rect.height - 20)
+        path.addRoundedRect(
+            in: bubbleRect,
+            cornerSize: CGSize(width: 25, height: 25) // Increased corner radius to match image
+        )
+        
+        // Arrow triangle - made slightly smaller and centered
+        let arrowWidth: CGFloat = 15
+        path.move(to: CGPoint(x: rect.width/2 - arrowWidth, y: rect.height - 20))
+        path.addLine(to: CGPoint(x: rect.width/2, y: rect.height))
+        path.addLine(to: CGPoint(x: rect.width/2 + arrowWidth, y: rect.height - 20))
+        path.closeSubpath()
+        
+        return path
     }
 }
 
