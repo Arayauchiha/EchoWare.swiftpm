@@ -54,7 +54,8 @@ struct ContentView: View {
     @State private var showSpeechBubble = false
     @State private var speechMessage = ""
     @State private var isFirstTime = true
-
+    @State private var pendingMessageWork: DispatchWorkItem?
+    
     var body: some View {
         ZStack {
             GeometryReader { geometry in
@@ -245,6 +246,23 @@ struct ContentView: View {
             }
             .edgesIgnoringSafeArea(.all)
             
+            // Settings button positioning
+            VStack {
+                HStack {
+                    Spacer()
+                    Button(action: {
+                        // Add your settings action here
+                    }) {
+                        Image(systemName: "gearshape.fill")
+                            .font(.system(size: 24))
+                            .foregroundColor(.white)
+                    }
+                }
+                .padding(.top, 60) // Adjust for status bar
+                .padding(.trailing, 16) // Standard iOS margin
+                Spacer()
+            }
+            
             VStack {
                 Spacer()
                 
@@ -305,52 +323,61 @@ struct ContentView: View {
     }
     
     private func awakeFox() {
+        pendingMessageWork?.cancel()
+        
         withAnimation {
             isAwake = true
             isFirstTime = false
             
-            // First message when fox wakes up
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            let workItem = DispatchWorkItem {
                 speechMessage = "I'm awake and ready to guard! I'll keep my ears perked for any sounds! 🎧"
                 withAnimation {
                     showSpeechBubble = true
                 }
                 
-                // Hide first message after 3 seconds
                 DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
                     withAnimation {
                         showSpeechBubble = false
                     }
                     
-                    // Show long press instruction after a short delay
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                    let instructionWork = DispatchWorkItem {
                         speechMessage = "When you need a break, just long press me to let me rest! 😊"
                         withAnimation {
                             showSpeechBubble = true
                         }
                         
-                        // Hide instruction message after 3 seconds
                         DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
                             withAnimation {
                                 showSpeechBubble = false
                             }
                         }
                     }
+                    pendingMessageWork = instructionWork
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1, execute: instructionWork)
                 }
             }
+            
+            pendingMessageWork = workItem
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: workItem)
         }
     }
     
     private func sleepFox() {
+        pendingMessageWork?.cancel()
+        
         withAnimation {
             isAwake = false
+            isFirstTime = false
             speechMessage = "Time for me to rest! 😴"
             showSpeechBubble = true
-            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+            
+            let workItem = DispatchWorkItem {
                 withAnimation {
                     showSpeechBubble = false
                 }
             }
+            pendingMessageWork = workItem
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2, execute: workItem)
         }
     }
 }
@@ -371,29 +398,6 @@ struct SpeechBubbleView: View {
             .frame(maxWidth: 280)
             .padding(.horizontal, 20)
             .padding(.bottom, 40)
-    }
-}
-
-// Custom shape that combines the bubble and arrow
-struct BubbleShape: Shape {
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        
-        // Main bubble rectangle with rounded corners
-        let bubbleRect = CGRect(x: 0, y: 0, width: rect.width, height: rect.height - 20)
-        path.addRoundedRect(
-            in: bubbleRect,
-            cornerSize: CGSize(width: 25, height: 25) // Increased corner radius to match image
-        )
-        
-        // Arrow triangle - made slightly smaller and centered
-        let arrowWidth: CGFloat = 15
-        path.move(to: CGPoint(x: rect.width/2 - arrowWidth, y: rect.height - 20))
-        path.addLine(to: CGPoint(x: rect.width/2, y: rect.height))
-        path.addLine(to: CGPoint(x: rect.width/2 + arrowWidth, y: rect.height - 20))
-        path.closeSubpath()
-        
-        return path
     }
 }
 
