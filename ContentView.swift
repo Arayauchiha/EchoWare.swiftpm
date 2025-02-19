@@ -56,6 +56,8 @@ struct ContentView: View {
     @State private var speechMessage = ""
     @State private var isFirstTime = true
     @State private var pendingMessageWork: DispatchWorkItem?
+    @State private var showPlayer = false
+    @State private var indicatorOpacity: Double = 0
     
     var body: some View {
         NavigationView {
@@ -82,18 +84,6 @@ struct ContentView: View {
                                     endPoint: .bottom
                                 )
                             )
-                            .overlay(
-                                // Additional vibrancy layer
-                                LinearGradient(
-                                    colors: [
-                                        Color(red: 1.0, green: 0.95, blue: 0.8).opacity(0.2),
-                                        Color(red: 0.95, green: 0.9, blue: 0.7).opacity(0.15),
-                                        Color.clear
-                                    ],
-                                    startPoint: .topTrailing,
-                                    endPoint: .bottomLeading
-                                )
-                            )
                     } else {
                         Image("pixelcut-export")
                             .resizable()
@@ -115,35 +105,6 @@ struct ContentView: View {
                                 )
                             )
                     }
-                    
-                    // Day/Night overlay with enhanced colors
-                    Rectangle()
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    isAwake ? Color(red: 0.95, green: 0.8, blue: 0.6).opacity(0.2) : Color.black.opacity(0.4),
-                                    isAwake ? Color(red: 0.9, green: 0.7, blue: 0.5).opacity(0.15) : Color.black.opacity(0.3)
-                                ],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                        )
-                        .animation(.easeInOut(duration: 0.2), value: isAwake)
-                    
-                    // Simple static stars
-                    ForEach(0..<50, id: \.self) { _ in
-                        let size = CGFloat.random(in: 1...3)
-                        Circle()
-                            .fill(Color.white)
-                            .frame(width: size, height: size)
-                            .blur(radius: 0.2)
-                            .position(
-                                x: CGFloat.random(in: 0...geometry.size.width),
-                                y: CGFloat.random(in: 0...geometry.size.height * 0.6)
-                            )
-                            .opacity(isAwake ? 0 : Double.random(in: 0.3...0.8))
-                    }
-                    .animation(.none, value: showSpeechBubble) // Prevent stars from moving when bubble appears
                     
                     // Moon/Sun Container with enhanced glow
                     ZStack {
@@ -199,11 +160,41 @@ struct ContentView: View {
                     }
                     .position(
                         x: isAwake ? UIScreen.main.bounds.width * 0.8 : UIScreen.main.bounds.width * 0.2,
-                        y: UIScreen.main.bounds.height * 0.2
+                        y: UIScreen.main.bounds.height * 0.25
                     )
-                    .animation(.easeInOut(duration: 0.6), value: isAwake) // Faster transition
+                    .animation(.easeInOut(duration: 0.6), value: isAwake)
                 }
                 .edgesIgnoringSafeArea(.all)
+                
+                // Swipe gesture area with visual indicator
+                if isAwake {
+                    VStack {
+                        Spacer()
+                        // Swipe indicator
+                        VStack(spacing: 4) {
+                            Image(systemName: "chevron.up")
+                                .font(.system(size: 20, weight: .medium))
+                            Text("Swipe up for test sounds")
+                                .font(.caption)
+                        }
+                        .foregroundColor(.white.opacity(0.8))
+                        .padding(.bottom, 8)
+                        .opacity(indicatorOpacity)
+                        
+                        Rectangle()
+                            .fill(Color.clear)
+                            .frame(height: 100)
+                            .contentShape(Rectangle())
+                            .gesture(
+                                DragGesture(minimumDistance: 50)
+                                    .onEnded { gesture in
+                                        if gesture.translation.height < -50 {
+                                            showPlayer = true
+                                        }
+                                    }
+                            )
+                    }
+                }
                 
                 VStack {
                     Spacer()
@@ -232,6 +223,16 @@ struct ContentView: View {
                             Spacer()
                         }
                         .transition(.scale.combined(with: .opacity))
+                        .onAppear {
+                            // Auto-dismiss first time message after 4 seconds
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+                                withAnimation {
+                                    if !isAwake && isFirstTime {
+                                        isFirstTime = false
+                                    }
+                                }
+                            }
+                        }
                     }
                     
                     // Fox container
@@ -254,6 +255,21 @@ struct ContentView: View {
                     }
                     .frame(height: 180)
                     .padding(.bottom, 138)
+                    .zIndex(1)
+                }
+            }
+            .fullScreenCover(isPresented: $showPlayer) {
+                NavigationView {
+                    PlayerView()
+                        .navigationTitle("Test Sounds")
+                        .navigationBarTitleDisplayMode(.inline)
+                        .toolbar {
+                            ToolbarItem(placement: .navigationBarLeading) {
+                                Button("Done") {
+                                    showPlayer = false
+                                }
+                            }
+                        }
                 }
             }
             .navigationTitle("EchoWare")
@@ -261,6 +277,7 @@ struct ContentView: View {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     NavigationLink(destination: SettingsView()) {
                         Image(systemName: "gearshape.fill")
+                            .foregroundColor(isAwake ? .black : .white)
                     }
                 }
             }
@@ -278,32 +295,57 @@ struct ContentView: View {
             isAwake = true
             isFirstTime = false
             
+            // First message
             let workItem = DispatchWorkItem {
                 speechMessage = "I'm awake and ready to guard! I'll keep my ears perked for any sounds! 🎧"
                 withAnimation {
                     showSpeechBubble = true
                 }
                 
+                // Second message about long press
                 DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
                     withAnimation {
                         showSpeechBubble = false
                     }
                     
-                    // Add new instruction about music
-                    let musicInstructionWork = DispatchWorkItem {
-                        speechMessage = "Want to try my sound detection? Tap the music note or swipe up to play some test sounds! 🎵"
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        speechMessage = "You can long press on me anytime to let me rest! 😴"
                         withAnimation {
                             showSpeechBubble = true
                         }
                         
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+                        // Third message about test sounds
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
                             withAnimation {
                                 showSpeechBubble = false
                             }
+                            
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                speechMessage = "Want to see how I detect sounds? Swipe up to try some test sounds! 🎵"
+                                withAnimation {
+                                    showSpeechBubble = true
+                                }
+                                
+                                // Show the swipe indicator after the message
+                                withAnimation(.easeInOut(duration: 0.5)) {
+                                    indicatorOpacity = 1
+                                }
+                                
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                                    withAnimation {
+                                        showSpeechBubble = false
+                                    }
+                                    
+                                    // Fade out indicator after a delay
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                                        withAnimation {
+                                            indicatorOpacity = 0
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
-                    pendingMessageWork = musicInstructionWork
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1, execute: musicInstructionWork)
                 }
             }
             
