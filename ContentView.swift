@@ -126,7 +126,7 @@ struct ContentView: View {
                             endPoint: .bottom
                         )
                     )
-                    .animation(.easeInOut(duration: 0.6), value: isAwake)
+                    .animation(.easeInOut(duration: 0.2), value: isAwake)
                 
                 // Simple static stars
                 ForEach(0..<50, id: \.self) { _ in
@@ -143,106 +143,63 @@ struct ContentView: View {
                 }
                 .animation(.none, value: showSpeechBubble) // Prevent stars from moving when bubble appears
                 
-                // Sun/Moon with transition animation
+                // Moon/Sun Container with enhanced glow
                 ZStack {
-                    // Moon and Sun container
-                    ZStack {
-                        // Moon
-                        Group {
-                            Circle()
-                                .fill(Color.white)
-                                .frame(width: 60, height: 60)
-                                .blur(radius: 2)
-                                .overlay(
-                                    Circle()
-                                        .fill(
-                                            RadialGradient(
-                                                colors: [
-                                                    Color.white.opacity(0.6),
-                                                    Color.white.opacity(0.2),
-                                                    Color.clear
-                                                ],
-                                                center: .center,
-                                                startRadius: 5,
-                                                endRadius: 50
-                                            )
-                                        )
-                                        .frame(width: 100, height: 100)
-                                        .blur(radius: 10)
-                                )
-                        }
-                        .opacity(isAwake ? 0 : 1)
+                    // Base celestial body
+                    Circle()
+                        .fill(
+                            RadialGradient(
+                                colors: [
+                                    isAwake ? Color.yellow : .white,
+                                    isAwake ? Color.orange.opacity(0.8) : .white.opacity(0.6),
+                                    .clear
+                                ],
+                                center: .center,
+                                startRadius: isAwake ? 20 : 15,
+                                endRadius: isAwake ? 100 : 60
+                            )
+                        )
+                        .frame(width: isAwake ? 80 : 60, height: isAwake ? 80 : 60)
                         
-                        // Sun
-                        Group {
-                            // Sun rays animation
-                            ForEach(0..<8) { index in
-                                let angle = Double(index) * .pi / 4
-                                Rectangle()
-                                    .fill(
-                                        LinearGradient(
-                                            colors: [
-                                                Color(red: 1, green: 0.85, blue: 0.4).opacity(0.4),
-                                                Color(red: 1, green: 0.85, blue: 0.4).opacity(0.2),
-                                                Color.clear
-                                            ],
-                                            startPoint: .top,
-                                            endPoint: .bottom
-                                        )
-                                    )
-                                    .frame(width: 15, height: 200)
-                                    .rotationEffect(.radians(angle))
-                                    .blur(radius: 15)
-                            }
-                            
-                            // Outer sun glow
-                            Circle()
-                                .fill(
-                                    RadialGradient(
-                                        colors: [
-                                            Color(red: 1, green: 0.8, blue: 0.3).opacity(0.5),
-                                            Color(red: 1, green: 0.7, blue: 0.2).opacity(0.3),
-                                            Color(red: 1, green: 0.6, blue: 0.1).opacity(0.1),
-                                            Color.clear
-                                        ],
-                                        center: .center,
-                                        startRadius: 30,
-                                        endRadius: 150
-                                    )
-                                )
-                                .frame(width: 300, height: 300)
-                                .blur(radius: 20)
-                            
-                            // Inner sun glow
-                            Circle()
-                                .fill(
-                                    RadialGradient(
-                                        colors: [
-                                            Color(red: 1, green: 0.95, blue: 0.8),
-                                            Color(red: 1, green: 0.9, blue: 0.4),
-                                            Color(red: 1, green: 0.8, blue: 0.3)
-                                        ],
-                                        center: .center,
-                                        startRadius: 0,
-                                        endRadius: 40
-                                    )
-                                )
-                                .frame(width: 80, height: 80)
-                                .blur(radius: 5)
-                            
-                            // Sun core
-                            Circle()
-                                .fill(Color(red: 1, green: 0.95, blue: 0.6))
-                                .frame(width: 70, height: 70)
-                        }
-                    }
-                    .opacity(isAwake ? 1 : 0)
+                    // Inner glow
+                    Circle()
+                        .fill(
+                            RadialGradient(
+                                colors: [
+                                    isAwake ? Color.yellow.opacity(0.8) : .white.opacity(0.8),
+                                    isAwake ? Color.orange.opacity(0.4) : .white.opacity(0.4),
+                                    .clear
+                                ],
+                                center: .center,
+                                startRadius: isAwake ? 10 : 5,
+                                endRadius: isAwake ? 80 : 60
+                            )
+                        )
+                        .blur(radius: 15)
+                        .frame(width: isAwake ? 140 : 120, height: isAwake ? 140 : 120)
+                        
+                    // Outer glow
+                    Circle()
+                        .fill(
+                            RadialGradient(
+                                colors: [
+                                    isAwake ? Color.yellow.opacity(0.4) : .white.opacity(0.4),
+                                    isAwake ? Color.orange.opacity(0.2) : .white.opacity(0.2),
+                                    .clear
+                                ],
+                                center: .center,
+                                startRadius: isAwake ? 20 : 15,
+                                endRadius: isAwake ? 100 : 80
+                            )
+                        )
+                        .blur(radius: 20)
+                        .frame(width: isAwake ? 180 : 160, height: isAwake ? 180 : 160)
                 }
                 .position(
-                    x: isAwake ? geometry.size.width * 0.8 : geometry.size.width * 0.2,
-                    y: geometry.size.height * 0.2
+                    x: isAwake ? UIScreen.main.bounds.width * 0.8 : UIScreen.main.bounds.width * 0.2,
+                    y: UIScreen.main.bounds.height * 0.2
                 )
-                .animation(.easeInOut(duration: 0.6), value: isAwake)
+                .animation(.easeInOut(duration: 0.6), value: isAwake) // Faster transition
             }
             .edgesIgnoringSafeArea(.all)
             
