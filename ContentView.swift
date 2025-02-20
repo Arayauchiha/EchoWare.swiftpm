@@ -1,29 +1,181 @@
+import Foundation
+import AVFoundation
+import SoundAnalysis
+import Combine
 import SwiftUI
-import QuartzCore
+
+class AudioRecorder: ObservableObject {
+    private var audioEngine = AVAudioEngine()
+    private var streamAnalyzer: SNAudioStreamAnalyzer?
+    private var resultsObserver: ResultsObserver?
+    
+    @Published var isDoorBellDetected: Bool = false
+    @Published var doorbellConfidence: Double = 0.0
+    
+    // Inner class to handle sound classification results
+    private class ResultsObserver: NSObject, SNResultsObserving {
+        weak var parent: AudioRecorder?
+        
+        func request(_ request: SNRequest, didProduce result: SNResult) {
+            guard let result = result as? SNClassificationResult else { return }
+            
+            // Look for doorbell classifications
+            let doorbellResult = result.classification(forIdentifier: "door_bell")
+            print(doorbellResult)
+            if let doorbellResult = doorbellResult {
+                DispatchQueue.global().async {
+                    self.parent?.doorbellConfidence = doorbellResult.confidence
+                    self.parent?.isDoorBellDetected = doorbellResult.confidence > 0.8
+                    print(doorbellResult.confidence)
+                }
+            }
+        }
+        
+        func request(_ request: SNRequest, didFailWithError error: Error) {
+            print("Sound classification failed: \(error.localizedDescription)")
+        }
+        
+        func requestDidComplete(_ request: SNRequest) {
+            print("Sound classification completed")
+        }
+    }
+    
+    func getListOfRecognizedSounds() throws -> [String] {
+        let request = try SNClassifySoundRequest(classifierIdentifier: .version1)
+        return request.knownClassifications
+    }
+
+    func startListening() {
+        try? print(getListOfRecognizedSounds())
+        do {
+            let audioSession = AVAudioSession.sharedInstance()
+            try audioSession.setCategory(.record, mode: .default)
+            try audioSession.setActive(true)
+        } catch {
+            print("Failed to set up audio session: \(error.localizedDescription)")
+            return
+        }
+        
+        // Create analyzer and request
+        let inputFormat = audioEngine.inputNode.outputFormat(forBus: 0)
+        streamAnalyzer = SNAudioStreamAnalyzer(format: inputFormat)
+        
+        do {
+            let request = try SNClassifySoundRequest(classifierIdentifier: .version1)
+            resultsObserver = ResultsObserver()
+            resultsObserver?.parent = self
+            
+            try streamAnalyzer?.add(request, withObserver: resultsObserver!)
+        } catch {
+            print("Failed to create sound classification request: \(error.localizedDescription)")
+            return
+        }
+        
+        // Install tap and start audio engine
+        audioEngine.inputNode.installTap(onBus: 0,
+                                       bufferSize: 8192,
+                                       format: inputFormat) { [weak self] buffer, time in
+            self?.streamAnalyzer?.analyze(buffer,
+                                        atAudioFramePosition: time.sampleTime)
+        }
+        
+        do {
+            try audioEngine.start()
+            print("Audio engine started successfully")
+        } catch {
+            print("Failed to start audio engine: \(error.localizedDescription)")
+            stopListening()
+        }
+    }
+    
+    func stopListening() {
+        audioEngine.stop()
+        audioEngine.inputNode.removeTap(onBus: 0)
+        streamAnalyzer = nil
+        resultsObserver = nil
+        
+        do {
+            try AVAudioSession.sharedInstance().setActive(false)
+        } catch {
+            print("Failed to deactivate audio session: \(error.localizedDescription)")
+        }
+        
+        print("Audio recording stopped")
+    }
+}
 
 struct ObservingFoxView: View {
     let onLongPress: () -> Void
-    @State private var currentImageIndex = 12  // Alert mode frames are 12–20
+    @State private var currentImageIndex = 12
+    @State private var isListening = false
+    @State private var pulseColor = Color.blue.opacity(0.8)
     let timer = Timer.publish(every: 0.1, on: .main, in: .common).autoconnect()
     
     var body: some View {
-        Image("\(currentImageIndex)")
-            .resizable()
-            .aspectRatio(contentMode: .fit)
-            .gesture(
-                LongPressGesture(minimumDuration: 0.5)
-                    .onEnded { _ in
-                        onLongPress()
+        ZStack {
+            Image("\(currentImageIndex)")
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .gesture(
+                    LongPressGesture(minimumDuration: 0.5)
+                        .onEnded { _ in
+                            onLongPress()
+                        }
+                )
+                .overlay(
+                    // Sound wave indicators near ears
+                    ZStack {
+                        // Left ear waves - Reversed sizes
+//                        ForEach(0..<3) { index in
+//                            Arc(startAngle: .degrees(360), endAngle: .degrees(90))
+//                                .stroke(pulseColor, lineWidth: 2)
+//                                .frame(width: 55 - CGFloat(index * 8), height: 55 - CGFloat(index * 8))
+//                                .offset(x: -45, y: -65)
+//                                .scaleEffect(isListening ? 1.2 : 0.6) // Normal scale effect
+//                                .opacity(isListening ? 0 : 0.8) // Fade out as it gets bigger
+//                        }
+                        
+                        // Right ear waves - Reversed sizes
+                        ForEach(0..<3) { index in
+                            Arc(startAngle: .degrees(90), endAngle: .degrees(180))
+                                .stroke(pulseColor, lineWidth: 2)
+                                .frame(width: 55 - CGFloat(index * 8), height: 55 - CGFloat(index * 8))
+                                .offset(x: 35, y: -65)
+                                .scaleEffect(isListening ? 1.2 : 0.6) // Normal scale effect
+                                .opacity(isListening ? 0 : 0.8) // Fade out as it gets bigger
+                        }
                     }
-            )
-            // Update image frames WITHOUT an animation block so that the frame change is immediate.
-            .onReceive(timer) { _ in
-                if currentImageIndex < 20 {
-                    currentImageIndex += 1
-                } else {
-                    currentImageIndex = 12
+                    .animation(.easeIn(duration: 0.6).repeatForever(), value: isListening)
+                )
+                .onReceive(timer) { _ in
+                    if currentImageIndex < 20 {
+                        currentImageIndex += 1
+                    } else {
+                        currentImageIndex = 12
+                    }
+                    
+                    withAnimation(.easeInOut(duration: 0.8)) {
+                        isListening.toggle()
+                        pulseColor = isListening ? Color.blue.opacity(0.6) : Color.cyan.opacity(0.6)
+                    }
                 }
-            }
+        }
+    }
+}
+
+// Add this shape for the curved sound waves
+struct Arc: Shape {
+    let startAngle: Angle
+    let endAngle: Angle
+    
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.addArc(center: CGPoint(x: rect.midX, y: rect.midY),
+                   radius: rect.width / 2,
+                   startAngle: startAngle,
+                   endAngle: endAngle,
+                   clockwise: false)
+        return path
     }
 }
 
@@ -94,6 +246,7 @@ struct StarFieldView: View {
 }
 
 struct ContentView: View {
+    var audioRecorder = AudioRecorder()
     @AppStorage("alertStyle") private var alertStyle = 0
     @State private var isAwake = false
     @State private var isTransitioning = false
@@ -349,10 +502,11 @@ struct ContentView: View {
     }
     
     private func awakeFox() {
+        audioRecorder.startListening()
         pendingMessageWork?.cancel()
         
         Task {
-            await HapticManager.shared.playSuccess()
+            HapticManager.shared.playSuccess()
         }
         
         withAnimation {
@@ -419,10 +573,11 @@ struct ContentView: View {
     }
     
     private func sleepFox() {
+        audioRecorder.stopListening()
         pendingMessageWork?.cancel()
         
         Task {
-            await HapticManager.shared.playMediumImpact()
+            HapticManager.shared.playMediumImpact()
         }
         
         withAnimation {
@@ -444,7 +599,7 @@ struct ContentView: View {
     private func onSoundDetected() {
         if alertStyle != 0 {
             Task {
-                await HapticManager.shared.playWarning()
+                HapticManager.shared.playWarning()
             }
         }
     }
