@@ -7,6 +7,30 @@ struct SettingsView: View {
     @State private var showingNamePrompt = false
     @State private var tempUserName = ""
     @State private var showingTestAlert = false
+    @AppStorage("enabledCategories") private var enabledCategoriesString: String = {
+        let defaultCategories: Set<String> = [
+            SoundCategory.emergency.rawValue,
+            SoundCategory.pets.rawValue,
+            SoundCategory.doorway.rawValue,
+            SoundCategory.knocking.rawValue,
+            SoundCategory.baby.rawValue
+        ]
+        return (try? JSONEncoder().encode(Array(defaultCategories)).base64EncodedString()) ?? ""
+    }()
+    
+    private var enabledCategories: Set<String> {
+        get {
+            guard let data = Data(base64Encoded: enabledCategoriesString),
+                  let array = try? JSONDecoder().decode([String].self, from: data)
+            else { return [] }
+            return Set(array)
+        }
+        set {
+            if let encoded = try? JSONEncoder().encode(Array(newValue)).base64EncodedString() {
+                enabledCategoriesString = encoded
+            }
+        }
+    }
     
     private let availableSounds = [
         "doorbell": "🚪 Doorbell",
@@ -40,17 +64,35 @@ struct SettingsView: View {
                 
                 // Sound Detection Section
                 Section {
-                    ForEach(Array(availableSounds.keys), id: \.self) { sound in
-                        Toggle(availableSounds[sound] ?? "", isOn: Binding(
-                            get: { selectedSoundsArray.contains(sound) },
-                            set: { isSelected in
-                                if isSelected {
-                                    selectedSoundsArray.append(sound)
+                    ForEach(SoundCategory.allCases, id: \.self) { category in
+                        Toggle(isOn: Binding(
+                            get: {
+                                guard let data = Data(base64Encoded: enabledCategoriesString),
+                                      let array = try? JSONDecoder().decode([String].self, from: data)
+                                else { return false }
+                                return Set(array).contains(category.rawValue)
+                            },
+                            set: { isEnabled in
+                                guard let data = Data(base64Encoded: enabledCategoriesString),
+                                      var array = try? JSONDecoder().decode([String].self, from: data)
+                                else { return }
+                                
+                                if isEnabled {
+                                    array.append(category.rawValue)
                                 } else {
-                                    selectedSoundsArray.removeAll { $0 == sound }
+                                    array.removeAll { $0 == category.rawValue }
+                                }
+                                
+                                if let encoded = try? JSONEncoder().encode(array).base64EncodedString() {
+                                    enabledCategoriesString = encoded
                                 }
                             }
-                        ))
+                        )) {
+                            HStack {
+                                Text(category.icon)
+                                Text(category.rawValue)
+                            }
+                        }
                     }
                 } header: {
                     Text("Sounds to Detect")
@@ -169,4 +211,4 @@ struct SettingsView: View {
 
 #Preview {
     SettingsView()
-} 
+}

@@ -5,28 +5,95 @@ import Combine
 import SwiftUI
 
 class AudioRecorder: ObservableObject {
+    private let queue = DispatchQueue(label: "com.echofox.audioprocessing")
     private var audioEngine = AVAudioEngine()
     private var streamAnalyzer: SNAudioStreamAnalyzer?
     private var resultsObserver: ResultsObserver?
+    private let serialQueue = DispatchQueue(label: "com.echofox.serialQueue")
+    private var lastDetectionTime: Date = .distantPast
+    private let minimumTimeBetweenDetections: TimeInterval = 1.0
+    private let stateQueue = DispatchQueue(label: "com.echofox.stateQueue")
+    private let detectionQueue = DispatchQueue(label: "com.echofox.detection")
+    private var pendingDetection: DetectionData?
+    
+    @Published private(set) var detectedCategory: SoundCategory? {
+        willSet {
+            objectWillChange.send()
+        }
+    }
+    
+    @Published private(set) var soundConfidence: Double = 0.0 {
+        willSet {
+            objectWillChange.send()
+        }
+    }
     
     @Published var isDoorBellDetected: Bool = false
     @Published var doorbellConfidence: Double = 0.0
+    @AppStorage("enabledCategories") private var enabledCategoriesString: String = {
+        let defaultCategories: Set<String> = [
+            SoundCategory.emergency.rawValue,
+            SoundCategory.pets.rawValue,
+            SoundCategory.doorway.rawValue,
+            SoundCategory.knocking.rawValue,
+            SoundCategory.baby.rawValue
+        ]
+        return (try? JSONEncoder().encode(Array(defaultCategories)).base64EncodedString()) ?? ""
+    }()
+    
+    private var enabledCategories: Set<String> {
+        get {
+            guard let data = Data(base64Encoded: enabledCategoriesString),
+                  let array = try? JSONDecoder().decode([String].self, from: data)
+            else { return [] }
+            return Set(array)
+        }
+        set {
+            if let encoded = try? JSONEncoder().encode(Array(newValue)).base64EncodedString() {
+                enabledCategoriesString = encoded
+            }
+        }
+    }
     
     // Inner class to handle sound classification results
     private class ResultsObserver: NSObject, SNResultsObserving {
         weak var parent: AudioRecorder?
         
         func request(_ request: SNRequest, didProduce result: SNResult) {
-            guard let result = result as? SNClassificationResult else { return }
+            guard let result = result as? SNClassificationResult,
+                  let parent = self.parent else { return }
             
-            // Look for doorbell classifications
-            let doorbellResult = result.classification(forIdentifier: "door_bell")
-            print(doorbellResult)
-            if let doorbellResult = doorbellResult {
-                DispatchQueue.global().async {
-                    self.parent?.doorbellConfidence = doorbellResult.confidence
-                    self.parent?.isDoorBellDetected = doorbellResult.confidence > 0.8
-                    print(doorbellResult.confidence)
+            // Process on serial queue
+            parent.serialQueue.async {
+                for category in SoundCategory.allCases {
+                    guard parent.enabledCategories.contains(category.rawValue) else { continue }
+                    
+                    for sound in category.sounds {
+                        if let classification = result.classification(forIdentifier: sound),
+                           classification.confidence > 0.8 {
+                            // Print detection to console immediately
+                            print("🎵 Sound Detected!")
+                            print("Category: \(category.rawValue)")
+                            print("Sound: \(sound)")
+                            print("Confidence: \(classification.confidence)")
+                            print("------------------------")
+                            
+                            // Create detection data
+                            let detection = DetectionData(
+                                category: category,
+                                confidence: classification.confidence,
+                                timestamp: Date()
+                            )
+                            
+                            // Update state on main thread immediately
+                            DispatchQueue.main.async {
+                                parent.detectedCategory = category
+                                parent.soundConfidence = classification.confidence
+                                parent.objectWillChange.send()
+                            }
+                            return
+                        }
+                    }
                 }
             }
         }
@@ -37,6 +104,28 @@ class AudioRecorder: ObservableObject {
         
         func requestDidComplete(_ request: SNRequest) {
             print("Sound classification completed")
+        }
+    }
+    
+    private struct DetectionData {
+        let category: SoundCategory
+        let confidence: Double
+        let timestamp: Date
+    }
+    
+    private func updateDetectionState(_ data: DetectionData) {
+        detectionQueue.async { [weak self] in
+            guard let self = self else { return }
+            
+            // Check if enough time has passed
+            if data.timestamp.timeIntervalSince(self.lastDetectionTime) >= self.minimumTimeBetweenDetections {
+                DispatchQueue.main.async {
+                    self.lastDetectionTime = data.timestamp
+                    self.detectedCategory = data.category
+                    self.soundConfidence = data.confidence
+                    self.objectWillChange.send()
+                }
+            }
         }
     }
     
@@ -101,6 +190,26 @@ class AudioRecorder: ObservableObject {
         }
         
         print("Audio recording stopped")
+    }
+    
+    // Update setter for thread safety
+    private func updateDetectedSound(category: SoundCategory?, confidence: Double) {
+        // Process on the serial queue
+        serialQueue.async { [weak self] in
+            guard let self = self else { return }
+            
+            // Check if enough time has passed since last detection
+            let now = Date()
+            if now.timeIntervalSince(self.lastDetectionTime) >= self.minimumTimeBetweenDetections {
+                // Update state on main thread
+                DispatchQueue.main.async {
+                    self.lastDetectionTime = now
+                    self.detectedCategory = category
+                    self.soundConfidence = confidence
+                    self.objectWillChange.send()
+                }
+            }
+        }
     }
 }
 
@@ -245,9 +354,51 @@ struct StarFieldView: View {
     }
 }
 
+enum SoundCategory: String, CaseIterable {
+    case emergency = "Emergency Vehicles"
+    case pets = "Pet Sounds"
+    case doorway = "Door & Bell"
+    case knocking = "Knocking"
+    case baby = "Baby Crying"
+    
+    var sounds: [String] {
+        switch self {
+        case .emergency:
+            return ["ambulance_siren", "emergency_vehicle", "fire_engine_siren", "police_siren", "siren"]
+        case .pets:
+            return ["dog_bark", "dog_bow_wow"]
+        case .doorway:
+            return ["door_bell", "bell"]
+        case .knocking:
+            return ["knock"]
+        case .baby:
+            return ["baby_crying"]
+        }
+    }
+    
+    var icon: String {
+        switch self {
+        case .emergency: return "🚨"
+        case .pets: return "🐕"
+        case .doorway: return "🚪"
+        case .knocking: return "👆"
+        case .baby: return "👶"
+        }
+    }
+    
+    var alertMessage: String {
+        switch self {
+        case .emergency: return "Emergency vehicle siren detected nearby!"
+        case .pets: return "A dog is barking nearby!"
+        case .doorway: return "Someone rang the doorbell!"
+        case .knocking: return "Someone is knocking at the door!"
+        case .baby: return "A baby is crying!"
+        }
+    }
+}
+
 struct ContentView: View {
-    var audioRecorder = AudioRecorder()
-    @AppStorage("alertStyle") private var alertStyle = 0
+    @StateObject private var audioRecorder = AudioRecorder()
     @State private var isAwake = false
     @State private var isTransitioning = false
     @State private var showSpeechBubble = false
@@ -257,6 +408,21 @@ struct ContentView: View {
     @State private var showPlayer = false
     @State private var indicatorOpacity: Double = 0
     @State private var stars: [Star] = []
+    @State private var showingSoundAlert = false
+    @State private var currentAlertMessage = ""
+    @State private var isProcessingAlert = false
+    @AppStorage("alertStyle") private var alertStyle = 0
+    
+    func handleSoundDetection(category: SoundCategory) {
+        currentAlertMessage = "\(category.icon) \(category.alertMessage)"
+        showingSoundAlert = true
+        isProcessingAlert = true
+        
+        // Reset the processing flag after alert is dismissed
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            isProcessingAlert = false
+        }
+    }
     
     var body: some View {
         NavigationView {
@@ -497,6 +663,18 @@ struct ContentView: View {
                 stars = (0..<100).map { _ in
                     Star.random(in: screenBounds)
                 }
+            }
+        }
+        .alert("Sound Detected!", isPresented: $showingSoundAlert) {
+            Button("OK") {
+                isProcessingAlert = false
+            }
+        } message: {
+            Text(currentAlertMessage)
+        }
+        .onChange(of: audioRecorder.detectedCategory) { newCategory in
+            if let category = newCategory {
+                handleSoundDetection(category: category)
             }
         }
     }
