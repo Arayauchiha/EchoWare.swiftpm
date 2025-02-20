@@ -48,6 +48,51 @@ struct SleepingFoxView: View {
     }
 }
 
+struct Star: Identifiable {
+    let id = UUID()
+    let x: CGFloat
+    let y: CGFloat
+    let size: CGFloat
+    let opacity: Double
+    
+    static func random(in rect: CGRect) -> Star {
+        Star(
+            x: .random(in: 0...rect.width),
+            y: .random(in: 0...(rect.height * 0.6)), // Only use top 60% of height
+            size: .random(in: 1...3),
+            opacity: .random(in: 0.5...1.0)
+        )
+    }
+}
+
+struct StarFieldView: View {
+    let stars: [Star]
+    @State private var twinkleState = false
+    
+    var body: some View {
+        Canvas { context, size in
+            for star in stars {
+                let opacity = twinkleState ? star.opacity : star.opacity * 0.5
+                context.opacity = opacity
+                context.fill(
+                    Path(ellipseIn: CGRect(
+                        x: star.x,
+                        y: star.y,
+                        width: star.size,
+                        height: star.size
+                    )),
+                    with: .color(.white)
+                )
+            }
+        }
+        .onAppear {
+            withAnimation(.easeInOut(duration: 1.5).repeatForever()) {
+                twinkleState.toggle()
+            }
+        }
+    }
+}
+
 struct ContentView: View {
     @AppStorage("alertStyle") private var alertStyle = 0
     @State private var isAwake = false
@@ -58,6 +103,7 @@ struct ContentView: View {
     @State private var pendingMessageWork: DispatchWorkItem?
     @State private var showPlayer = false
     @State private var indicatorOpacity: Double = 0
+    @State private var stars: [Star] = []
     
     var body: some View {
         NavigationView {
@@ -85,25 +131,36 @@ struct ContentView: View {
                                 )
                             )
                     } else {
-                        Image("pixelcut-export")
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: geometry.size.width, height: geometry.size.height)
-                            .clipped()
-                            .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
-                            .transition(.opacity)
-                            .overlay(
-                                // Night atmosphere enhancement
-                                LinearGradient(
-                                    colors: [
-                                        Color(red: 0.1, green: 0.2, blue: 0.4).opacity(0.3),
-                                        Color(red: 0.1, green: 0.2, blue: 0.3).opacity(0.2),
-                                        Color.clear
-                                    ],
-                                    startPoint: .top,
-                                    endPoint: .bottom
+                        ZStack {
+                            Image("pixelcut-export")
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: geometry.size.width, height: geometry.size.height)
+                                .clipped()
+                                .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
+                                .transition(.opacity)
+                            
+                            StarFieldView(stars: stars)
+                                .frame(width: geometry.size.width, height: geometry.size.height)
+                                .clipShape(
+                                    Rectangle()
+                                        .size(
+                                            width: geometry.size.width,
+                                            height: geometry.size.height * 0.6
+                                        )
                                 )
+                            
+                            // Night atmosphere enhancement
+                            LinearGradient(
+                                colors: [
+                                    Color(red: 0.1, green: 0.2, blue: 0.4).opacity(0.3),
+                                    Color(red: 0.1, green: 0.2, blue: 0.3).opacity(0.2),
+                                    Color.clear
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
                             )
+                        }
                     }
                     
                     // Moon/Sun Container with enhanced glow
@@ -279,6 +336,13 @@ struct ContentView: View {
                         Image(systemName: "gearshape.fill")
                             .foregroundColor(isAwake ? .black : .white)
                     }
+                }
+            }
+            .onAppear {
+                // Generate random stars
+                let screenBounds = UIScreen.main.bounds
+                stars = (0..<100).map { _ in
+                    Star.random(in: screenBounds)
                 }
             }
         }
