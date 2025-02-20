@@ -408,21 +408,7 @@ struct ContentView: View {
     @State private var showPlayer = false
     @State private var indicatorOpacity: Double = 0
     @State private var stars: [Star] = []
-    @State private var showingSoundAlert = false
-    @State private var currentAlertMessage = ""
-    @State private var isProcessingAlert = false
-    @AppStorage("alertStyle") private var alertStyle = 0
-    
-    func handleSoundDetection(category: SoundCategory) {
-        currentAlertMessage = "\(category.icon) \(category.alertMessage)"
-        showingSoundAlert = true
-        isProcessingAlert = true
-        
-        // Reset the processing flag after alert is dismissed
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            isProcessingAlert = false
-        }
-    }
+    @EnvironmentObject private var alertManager: AlertManager
     
     var body: some View {
         NavigationView {
@@ -564,7 +550,7 @@ struct ContentView: View {
                             .gesture(
                                 DragGesture(minimumDistance: 50)
                                     .onEnded { gesture in
-                                        if gesture.translation.height < -50 {
+                                        if (gesture.translation.height < -50) {
                                             showPlayer = true
                                         }
                                     }
@@ -665,16 +651,16 @@ struct ContentView: View {
                 }
             }
         }
-        .alert("Sound Detected!", isPresented: $showingSoundAlert) {
+        .alert("Sound Detected!", isPresented: $alertManager.showingSoundAlert) {
             Button("OK") {
-                isProcessingAlert = false
+                alertManager.dismissAlert()
             }
         } message: {
-            Text(currentAlertMessage)
+            Text(alertManager.currentAlertMessage)
         }
         .onChange(of: audioRecorder.detectedCategory) { newCategory in
             if let category = newCategory {
-                handleSoundDetection(category: category)
+                alertManager.showAlert(for: category)
             }
         }
     }
@@ -774,13 +760,7 @@ struct ContentView: View {
         }
     }
     
-    private func onSoundDetected() {
-        if alertStyle != 0 {
-            Task {
-                HapticManager.shared.playWarning()
-            }
-        }
-    }
+    
 }
 
 // Speech Bubble View

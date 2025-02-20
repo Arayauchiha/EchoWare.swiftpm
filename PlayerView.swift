@@ -7,6 +7,7 @@ struct PlayerView: View {
     @State private var currentTime: TimeInterval = 0
     @State private var duration: TimeInterval = 0
     @State private var volume: Double = 0.5
+    @EnvironmentObject private var alertManager: AlertManager
     
     var body: some View {
         NavigationView {
@@ -100,6 +101,13 @@ struct PlayerView: View {
                 Spacer()
             }
             .navigationTitle("Player")
+            .alert("Sound Detected!", isPresented: $alertManager.showingSoundAlert) {
+                Button("OK") {
+                    alertManager.isProcessingAlert = false
+                }
+            } message: {
+                Text(alertManager.currentAlertMessage)
+            }
         }
     }
     
@@ -112,4 +120,4 @@ struct PlayerView: View {
 
 #Preview {
     PlayerView()
-} 
+}
