@@ -1,444 +1,471 @@
 import SwiftUI
 import QuartzCore
 
-struct ContentView: View {
-    @State private var isAwake = false
-    @State private var isTransitioning = false
-    @State private var drawingPath = Path()
-    @State private var points: [CGPoint] = []
+struct ObservingFoxView: View {
+    let onLongPress: () -> Void
+    @State private var currentImageIndex = 12  // Alert mode frames are 12–20
+    let timer = Timer.publish(every: 0.1, on: .main, in: .common).autoconnect()
     
     var body: some View {
-        ZStack {
-            // Background image with centered positioning
-            GeometryReader { geometry in
-                Image("pixelcut-export")
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .frame(width: geometry.size.width, height: geometry.size.height)
-                    .clipped()
-                    .position(x: geometry.size.width/2, y: geometry.size.height/2)
-                
-                // Stars overlay
-                ForEach(0..<50) { _ in
-                    let size = CGFloat.random(in: 1...3)
-                    Circle()
-                        .fill(Color.white)
-                        .frame(width: size, height: size)
-                        .blur(radius: 0.2)
-                        .position(
-                            x: CGFloat.random(in: 0...geometry.size.width),
-                            y: CGFloat.random(in: 0...geometry.size.height * 0.6)
-                        )
-                        .opacity(Double.random(in: 0.3...0.8))
+        Image("\(currentImageIndex)")
+            .resizable()
+            .aspectRatio(contentMode: .fit)
+            .gesture(
+                LongPressGesture(minimumDuration: 0.5)
+                    .onEnded { _ in
+                        onLongPress()
+                    }
+            )
+            // Update image frames WITHOUT an animation block so that the frame change is immediate.
+            .onReceive(timer) { _ in
+                if currentImageIndex < 20 {
+                    currentImageIndex += 1
+                } else {
+                    currentImageIndex = 12
                 }
-                
-                // Moon/Sun with animation
-                ZStack {
-                    // Outer glow
-                    Circle()
-                        .fill(
-                            RadialGradient(
+            }
+    }
+}
+
+struct SleepingFoxView: View {
+    let onTap: () -> Void
+    @State private var currentImageIndex = 1  // Awake fox frames are 1–9
+    let timer = Timer.publish(every: 0.15, on: .main, in: .common).autoconnect()
+    
+    var body: some View {
+        Image("\(currentImageIndex)")
+            .resizable()
+            .aspectRatio(contentMode: .fit)
+            .onTapGesture { onTap() }
+            // Update image frames immediately (no withAnimation here) for smooth frame transitions.
+            .onReceive(timer) { _ in
+                if currentImageIndex < 9 {
+                    currentImageIndex += 1
+                } else {
+                    currentImageIndex = 1
+                }
+            }
+    }
+}
+
+struct Star: Identifiable {
+    let id = UUID()
+    let x: CGFloat
+    let y: CGFloat
+    let size: CGFloat
+    let opacity: Double
+    
+    static func random(in rect: CGRect) -> Star {
+        Star(
+            x: .random(in: 0...rect.width),
+            y: .random(in: 0...(rect.height * 0.6)), // Only use top 60% of height
+            size: .random(in: 1...3),
+            opacity: .random(in: 0.5...1.0)
+        )
+    }
+}
+
+struct StarFieldView: View {
+    let stars: [Star]
+    @State private var twinkleState = false
+    
+    var body: some View {
+        Canvas { context, size in
+            for star in stars {
+                let opacity = twinkleState ? star.opacity : star.opacity * 0.5
+                context.opacity = opacity
+                context.fill(
+                    Path(ellipseIn: CGRect(
+                        x: star.x,
+                        y: star.y,
+                        width: star.size,
+                        height: star.size
+                    )),
+                    with: .color(.white)
+                )
+            }
+        }
+        .onAppear {
+            withAnimation(.easeInOut(duration: 1.5).repeatForever()) {
+                twinkleState.toggle()
+            }
+        }
+    }
+}
+
+struct ContentView: View {
+    @AppStorage("alertStyle") private var alertStyle = 0
+    @State private var isAwake = false
+    @State private var isTransitioning = false
+    @State private var showSpeechBubble = false
+    @State private var speechMessage = ""
+    @State private var isFirstTime = true
+    @State private var pendingMessageWork: DispatchWorkItem?
+    @State private var showPlayer = false
+    @State private var indicatorOpacity: Double = 0
+    @State private var stars: [Star] = []
+    
+    var body: some View {
+        NavigationView {
+            ZStack {
+                GeometryReader { geometry in
+                    // Background images
+                    if isAwake {
+                        Image("dayBG")
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: geometry.size.width, height: geometry.size.height)
+                            .clipped()
+                            .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
+                            .transition(.opacity)
+                            .overlay(
+                                // Daytime atmosphere enhancement
+                                LinearGradient(
+                                    colors: [
+                                        Color(red: 0.6, green: 0.8, blue: 1.0).opacity(0.3),
+                                        Color(red: 0.7, green: 0.9, blue: 1.0).opacity(0.2),
+                                        Color.clear
+                                    ],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                            )
+                    } else {
+                        ZStack {
+                            Image("pixelcut-export")
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: geometry.size.width, height: geometry.size.height)
+                                .clipped()
+                                .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
+                                .transition(.opacity)
+                            
+                            StarFieldView(stars: stars)
+                                .frame(width: geometry.size.width, height: geometry.size.height)
+                                .clipShape(
+                                    Rectangle()
+                                        .size(
+                                            width: geometry.size.width,
+                                            height: geometry.size.height * 0.6
+                                        )
+                                )
+                            
+                            // Night atmosphere enhancement
+                            LinearGradient(
                                 colors: [
-                                    (isAwake ? Color.yellow : Color.white).opacity(0.3),
+                                    Color(red: 0.1, green: 0.2, blue: 0.4).opacity(0.3),
+                                    Color(red: 0.1, green: 0.2, blue: 0.3).opacity(0.2),
                                     Color.clear
                                 ],
-                                center: .center,
-                                startRadius: 20,
-                                endRadius: 60
+                                startPoint: .top,
+                                endPoint: .bottom
                             )
-                        )
-                        .frame(width: 120, height: 120)
-                    
-                    // Inner glow
-                    Circle()
-                        .fill((isAwake ? Color.yellow : Color.white).opacity(0.7))
-                        .frame(width: 50, height: 50)
-                        .blur(radius: 5)
-                    
-                    // Celestial body
-                    Circle()
-                        .fill(isAwake ? Color.yellow : Color.white)
-                        .frame(width: 40, height: 40)
-                }
-                .position(
-                    x: isAwake ? geometry.size.width * 0.8 : geometry.size.width * 0.2,
-                    y: geometry.size.height * 0.2
-                )
-                .animation(.spring(response: 0.6, dampingFraction: 0.7), value: isAwake)
-            }
-            .edgesIgnoringSafeArea(.all)
-            
-            VStack {
-                Spacer()
-                
-                // Fox with enhanced shadow
-                ZStack {
-                    // Enhanced shadow
-                    Ellipse()
-                        .fill(Color.black.opacity(0.5))
-                        .frame(width: 140, height: 25)
-                        .blur(radius: 5)
-                        .offset(y: 65)
-                    
-                    if isAwake {
-                        ObservingFoxView(onLongPress: sleepFox)
-                            .frame(width: 160, height: 160)
-                            .offset(y: 30)
-                    } else {
-                        SleepingFoxView(onTap: awakeFox)
-                            .frame(width: 160, height: 160)
-                            .offset(y: 30)
-                    }
-                }
-                .frame(height: 180)
-                .padding(.bottom, 70)
-                
-                Text(isAwake ? "Listening for sounds..." : "Tap the fox or draw a circle to awaken")
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundColor(.white)
-                    .padding(.bottom, 40)
-            }
-            
-            // Drawing path overlay
-            drawingPath
-                .stroke(
-                    LinearGradient(
-                        colors: [.blue.opacity(0.5), .purple.opacity(0.5)],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    ),
-                    style: StrokeStyle(lineWidth: 2, lineCap: .round)
-                )
-                .opacity(points.isEmpty ? 0 : 0.7)
-        }
-        .gesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { value in
-                    let point = value.location
-                    points.append(point)
-                    
-                    drawingPath = Path { path in
-                        guard let firstPoint = points.first else { return }
-                        path.move(to: firstPoint)
-                        for point in points.dropFirst() {
-                            path.addLine(to: point)
                         }
                     }
-                }
-                .onEnded { _ in
-                    if isCircular(points) && !isAwake {
-                        awakeFox()
+                    
+                    // Moon/Sun Container with enhanced glow
+                    ZStack {
+                        // Base celestial body
+                        Circle()
+                            .fill(
+                                RadialGradient(
+                                    colors: [
+                                        isAwake ? Color.yellow : .white,
+                                        isAwake ? Color.orange.opacity(0.8) : .white.opacity(0.6),
+                                        .clear
+                                    ],
+                                    center: .center,
+                                    startRadius: isAwake ? 20 : 15,
+                                    endRadius: isAwake ? 100 : 60
+                                )
+                            )
+                            .frame(width: isAwake ? 80 : 60, height: isAwake ? 80 : 60)
+                            
+                        // Inner glow
+                        Circle()
+                            .fill(
+                                RadialGradient(
+                                    colors: [
+                                        isAwake ? Color.yellow.opacity(0.8) : .white.opacity(0.8),
+                                        isAwake ? Color.orange.opacity(0.4) : .white.opacity(0.4),
+                                        .clear
+                                    ],
+                                    center: .center,
+                                    startRadius: isAwake ? 10 : 5,
+                                    endRadius: isAwake ? 80 : 60
+                                )
+                            )
+                            .blur(radius: 15)
+                            .frame(width: isAwake ? 140 : 120, height: isAwake ? 140 : 120)
+                            
+                        // Outer glow
+                        Circle()
+                            .fill(
+                                RadialGradient(
+                                    colors: [
+                                        isAwake ? Color.yellow.opacity(0.4) : .white.opacity(0.4),
+                                        isAwake ? Color.orange.opacity(0.2) : .white.opacity(0.2),
+                                        .clear
+                                    ],
+                                    center: .center,
+                                    startRadius: isAwake ? 20 : 15,
+                                    endRadius: isAwake ? 100 : 80
+                                )
+                            )
+                            .blur(radius: 20)
+                            .frame(width: isAwake ? 180 : 160, height: isAwake ? 180 : 160)
                     }
-                    withAnimation {
-                        points.removeAll()
-                        drawingPath = Path()
+                    .position(
+                        x: isAwake ? UIScreen.main.bounds.width * 0.8 : UIScreen.main.bounds.width * 0.2,
+                        y: UIScreen.main.bounds.height * 0.25
+                    )
+                    .animation(.easeInOut(duration: 0.6), value: isAwake)
+                }
+                .edgesIgnoringSafeArea(.all)
+                
+                // Swipe gesture area with visual indicator
+                if isAwake {
+                    VStack {
+                        Spacer()
+                        // Swipe indicator
+                        VStack(spacing: 4) {
+                            Image(systemName: "chevron.up")
+                                .font(.system(size: 20, weight: .medium))
+                            Text("Swipe up for test sounds")
+                                .font(.caption)
+                        }
+                        .foregroundColor(.white.opacity(0.8))
+                        .padding(.bottom, 8)
+                        .opacity(indicatorOpacity)
+                        
+                        Rectangle()
+                            .fill(Color.clear)
+                            .frame(height: 100)
+                            .contentShape(Rectangle())
+                            .gesture(
+                                DragGesture(minimumDistance: 50)
+                                    .onEnded { gesture in
+                                        if gesture.translation.height < -50 {
+                                            showPlayer = true
+                                        }
+                                    }
+                            )
                     }
                 }
-        )
+                
+                VStack {
+                    Spacer()
+                    
+                    // Speech bubble display
+                    if showSpeechBubble {
+                        if isAwake {
+                            HStack {
+                                Spacer()
+                                SpeechBubbleView(message: speechMessage)
+                                Spacer()
+                            }
+                            .transition(.scale.combined(with: .opacity))
+                        } else {
+                            HStack {
+                                Spacer()
+                                SpeechBubbleView(message: "Time for me to rest! 😴")
+                                Spacer()
+                            }
+                            .transition(.scale.combined(with: .opacity))
+                        }
+                    } else if !isAwake && isFirstTime {
+                        HStack {
+                            Spacer()
+                            SpeechBubbleView(message: "Hey! 👋 Tap me to wake me up and I'll guard your space! 🦊")
+                            Spacer()
+                        }
+                        .transition(.scale.combined(with: .opacity))
+                        .onAppear {
+                            // Auto-dismiss first time message after 4 seconds
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+                                withAnimation {
+                                    if !isAwake && isFirstTime {
+                                        isFirstTime = false
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Fox container
+                    ZStack {
+                        Ellipse()
+                            .fill(Color.black.opacity(0.5))
+                            .frame(width: 140, height: 25)
+                            .blur(radius: 5)
+                            .offset(y: 65)
+                        
+                        if isAwake {
+                            ObservingFoxView(onLongPress: sleepFox)
+                                .frame(width: 160, height: 160)
+                                .offset(y: 30)
+                        } else {
+                            SleepingFoxView(onTap: awakeFox)
+                                .frame(width: 160, height: 160)
+                                .offset(y: 30)
+                        }
+                    }
+                    .frame(height: 180)
+                    .padding(.bottom, 138)
+                    .zIndex(1)
+                }
+            }
+            .fullScreenCover(isPresented: $showPlayer) {
+                NavigationView {
+                    PlayerView()
+                        .navigationTitle("Test Sounds")
+                        .navigationBarTitleDisplayMode(.inline)
+                        .toolbar {
+                            ToolbarItem(placement: .navigationBarLeading) {
+                                Button("Done") {
+                                    showPlayer = false
+                                }
+                            }
+                        }
+                }
+            }
+            .navigationTitle("EchoWare")
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    NavigationLink(destination: SettingsView()) {
+                        Image(systemName: "gearshape.fill")
+                            .foregroundColor(isAwake ? .black : .white)
+                    }
+                }
+            }
+            .onAppear {
+                // Generate random stars
+                let screenBounds = UIScreen.main.bounds
+                stars = (0..<100).map { _ in
+                    Star.random(in: screenBounds)
+                }
+            }
+        }
     }
     
     private func awakeFox() {
-        withAnimation(.spring(response: 0.6, dampingFraction: 0.7)) {
-            isTransitioning = true
+        pendingMessageWork?.cancel()
+        
+        Task {
+            await HapticManager.shared.playSuccess()
         }
         
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            withAnimation(.spring(response: 0.6, dampingFraction: 0.7)) {
-                isAwake = true
+        withAnimation {
+            isAwake = true
+            isFirstTime = false
+            
+            // First message
+            let workItem = DispatchWorkItem {
+                speechMessage = "I'm awake and ready to guard! I'll keep my ears perked for any sounds! 🎧"
+                withAnimation {
+                    showSpeechBubble = true
+                }
+                
+                // Second message about long press
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                    withAnimation {
+                        showSpeechBubble = false
+                    }
+                    
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        speechMessage = "You can long press on me anytime to let me rest! 😴"
+                        withAnimation {
+                            showSpeechBubble = true
+                        }
+                        
+                        // Third message about test sounds
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                            withAnimation {
+                                showSpeechBubble = false
+                            }
+                            
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                speechMessage = "Want to see how I detect sounds? Swipe up to try some test sounds! 🎵"
+                                withAnimation {
+                                    showSpeechBubble = true
+                                }
+                                
+                                // Show the swipe indicator after the message
+                                withAnimation(.easeInOut(duration: 0.5)) {
+                                    indicatorOpacity = 1
+                                }
+                                
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                                    withAnimation {
+                                        showSpeechBubble = false
+                                    }
+                                    
+                                    // Fade out indicator after a delay
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                                        withAnimation {
+                                            indicatorOpacity = 0
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
-        }
-        
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
-            withAnimation {
-                isTransitioning = false
-            }
+            
+            pendingMessageWork = workItem
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: workItem)
         }
     }
     
     private func sleepFox() {
-        withAnimation(.spring(response: 0.6, dampingFraction: 0.7)) {
+        pendingMessageWork?.cancel()
+        
+        Task {
+            await HapticManager.shared.playMediumImpact()
+        }
+        
+        withAnimation {
             isAwake = false
+            isFirstTime = false
+            speechMessage = "Time for me to rest! 😴"
+            showSpeechBubble = true
+            
+            let workItem = DispatchWorkItem {
+                withAnimation {
+                    showSpeechBubble = false
+                }
+            }
+            pendingMessageWork = workItem
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2, execute: workItem)
         }
     }
     
-    private func isCircular(_ points: [CGPoint]) -> Bool {
-        guard points.count >= 20 else { return false }
-        
-        let center = points.reduce(.zero) { $0 + $1 } / CGFloat(points.count)
-        let avgRadius = points.map { $0.distance(to: center) }
-            .reduce(0, +) / CGFloat(points.count)
-        
-        return points.allSatisfy { point in
-            let distance = point.distance(to: center)
-            return abs(distance - avgRadius) < 30
-        }
-    }
-}
-
-// MARK: - Background Views and Shapes
-
-struct CherryBlossomTree: Shape {
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        let width = rect.width
-        let height = rect.height
-        
-        // Trunk
-        path.addRect(CGRect(x: width * 0.45,
-                           y: height * 0.5,
-                           width: width * 0.1,
-                           height: height * 0.5))
-        
-        // Main branches
-        path.move(to: CGPoint(x: width * 0.5, y: height * 0.5))
-        path.addLine(to: CGPoint(x: width * 0.3, y: height * 0.3))
-        path.move(to: CGPoint(x: width * 0.5, y: height * 0.5))
-        path.addLine(to: CGPoint(x: width * 0.7, y: height * 0.3))
-        path.move(to: CGPoint(x: width * 0.5, y: height * 0.4))
-        path.addLine(to: CGPoint(x: width * 0.2, y: height * 0.2))
-        path.move(to: CGPoint(x: width * 0.5, y: height * 0.4))
-        path.addLine(to: CGPoint(x: width * 0.8, y: height * 0.2))
-        
-        return path
-    }
-}
-
-struct ParkBench: Shape {
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        let width = rect.width
-        let height = rect.height
-        
-        // Seat
-        path.addRect(CGRect(x: width * 0.1, 
-                           y: height * 0.3,
-                           width: width * 0.8,
-                           height: height * 0.15))
-        
-        // Backrest
-        path.addRect(CGRect(x: width * 0.1,
-                           y: height * 0.1,
-                           width: width * 0.8,
-                           height: height * 0.1))
-        
-        // Left legs
-        path.addRect(CGRect(x: width * 0.15,
-                           y: height * 0.3,
-                           width: width * 0.08,
-                           height: height * 0.6))
-        
-        // Right legs
-        path.addRect(CGRect(x: width * 0.77,
-                           y: height * 0.3,
-                           width: width * 0.08,
-                           height: height * 0.6))
-        
-        return path
-    }
-}
-
-struct PerspectiveBackground: View {
-    let isAwake: Bool
-    
-    var body: some View {
-        GeometryReader { geometry in
-            ZStack {
-                // Night sky gradient with deeper blues
-                LinearGradient(
-                    colors: [
-                        Color(red: 0.05, green: 0.1, blue: 0.2),    // Deep blue
-                        Color(red: 0.1, green: 0.2, blue: 0.35),    // Mid blue
-                        Color(red: 0.15, green: 0.3, blue: 0.45)    // Light blue horizon
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .ignoresSafeArea()
-                
-                // Stars with varying sizes and glows
-                ForEach(0..<80) { _ in
-                    let size = CGFloat.random(in: 2...4)
-                    ZStack {
-                        Circle()
-                            .fill(Color.white.opacity(0.5))
-                            .frame(width: size * 1.5, height: size * 1.5)
-                            .blur(radius: 1)
-                        
-                        Circle()
-                            .fill(Color.white)
-                            .frame(width: size, height: size)
-                    }
-                    .position(
-                        x: CGFloat.random(in: 0...geometry.size.width),
-                        y: CGFloat.random(in: 0...geometry.size.height * 0.6)
-                    )
-                    .opacity(Double.random(in: 0.5...1.0))
-                }
-                
-                // Glowing moon
-                ZStack {
-                    // Outer glow
-                    Circle()
-                        .fill(
-                            RadialGradient(
-                                colors: [
-                                    Color.white.opacity(0.3),
-                                    Color.white.opacity(0.0)
-                                ],
-                                center: .center,
-                                startRadius: 30,
-                                endRadius: 100
-                            )
-                        )
-                        .frame(width: 200, height: 200)
-                    
-                    // Inner glow
-                    Circle()
-                        .fill(Color.white.opacity(0.6))
-                        .frame(width: 100, height: 100)
-                        .blur(radius: 10)
-                    
-                    // Moon body
-                    Circle()
-                        .fill(Color.white)
-                        .frame(width: 80, height: 80)
-                }
-                .position(x: geometry.size.width * 0.75, y: geometry.size.height * 0.25)
-                
-                // Curved snowy ground
-                Path { path in
-                    path.move(to: CGPoint(x: 0, y: geometry.size.height * 0.65))
-                    path.addCurve(
-                        to: CGPoint(x: geometry.size.width, y: geometry.size.height * 0.65),
-                        control1: CGPoint(x: geometry.size.width * 0.3, y: geometry.size.height * 0.6),
-                        control2: CGPoint(x: geometry.size.width * 0.7, y: geometry.size.height * 0.7)
-                    )
-                    path.addLine(to: CGPoint(x: geometry.size.width, y: geometry.size.height))
-                    path.addLine(to: CGPoint(x: 0, y: geometry.size.height))
-                    path.closeSubpath()
-                }
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color(red: 0.2, green: 0.4, blue: 0.5),  // Lighter snow
-                            Color(red: 0.1, green: 0.2, blue: 0.35)  // Darker snow shadow
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-                
-                // Layered pine trees
-                ForEach(0..<3) { row in
-                    ForEach(-6...6, id: \.self) { index in
-                        CurvedPineTree()
-                            .fill(Color(red: 0.1, green: 0.15, blue: 0.25))
-                            .frame(
-                                width: 60 - CGFloat(row) * 10,
-                                height: 120 - CGFloat(row) * 20
-                            )
-                            .position(
-                                x: geometry.size.width * (0.5 + Double(index) * (0.1 - Double(row) * 0.02)),
-                                y: geometry.size.height * (0.55 + Double(row) * 0.05)
-                            )
-                            .opacity(1.0 - Double(row) * 0.2)
-                    }
-                }
+    private func onSoundDetected() {
+        if alertStyle != 0 {
+            Task {
+                await HapticManager.shared.playWarning()
             }
         }
     }
 }
 
-struct CurvedPineTree: Shape {
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        let width = rect.width
-        let height = rect.height
-        
-        // Trunk
-        path.addRect(CGRect(x: width * 0.45,
-                           y: height * 0.7,
-                           width: width * 0.1,
-                           height: height * 0.3))
-        
-        // Curved triangle sections for more natural look
-        for i in 0..<4 {
-            let sectionHeight = height * 0.25
-            let yOffset = height * CGFloat(i) * 0.2
-            let sectionWidth = width * (1.0 - CGFloat(i) * 0.15)
-            
-            path.move(to: CGPoint(x: width/2, y: yOffset))
-            
-            // Left curve
-            path.addCurve(
-                to: CGPoint(x: (width - sectionWidth)/2, y: yOffset + sectionHeight),
-                control1: CGPoint(x: width/2 - sectionWidth/4, y: yOffset + sectionHeight/3),
-                control2: CGPoint(x: (width - sectionWidth)/2, y: yOffset + sectionHeight/2)
+// Speech Bubble View
+struct SpeechBubbleView: View {
+    let message: String
+    
+    var body: some View {
+        Text(message)
+            .padding(15)
+            .background(
+                RoundedRectangle(cornerRadius: 20)
+                    .fill(Color.white.opacity(0.95))
             )
-            
-            // Right curve
-            path.addCurve(
-                to: CGPoint(x: width/2, y: yOffset),
-                control1: CGPoint(x: (width + sectionWidth)/2, y: yOffset + sectionHeight),
-                control2: CGPoint(x: width/2 + sectionWidth/4, y: yOffset + sectionHeight/3)
-            )
-        }
-        
-        return path
-    }
-}
-
-// MARK: - Fox Animation Views
-
-struct SleepingFoxView: View {
-    var onTap: () -> Void
-    @State private var currentFrame = 1
-    private let totalFrames = 11
-    private let animationTimer = Timer.publish(every: 0.1, on: .main, in: .common).autoconnect()
-    
-    var body: some View {
-        Image("\(currentFrame)")
-            .resizable()
-            .scaledToFit()
-            .onTapGesture { onTap() }
-            .onReceive(animationTimer) { _ in
-                currentFrame = currentFrame < totalFrames ? currentFrame + 1 : 1
-            }
-    }
-}
-
-struct ObservingFoxView: View {
-    var onLongPress: () -> Void
-    @State private var currentFrame = 12
-    private let totalFrames = 20
-    private let animationTimer = Timer.publish(every: 0.1, on: .main, in: .common).autoconnect()
-    
-    var body: some View {
-        Image("\(String(format: "%02d", currentFrame))")
-            .resizable()
-            .scaledToFit()
-            .onReceive(animationTimer) { _ in
-                currentFrame = currentFrame < totalFrames ? currentFrame + 1 : 12
-            }
-            .onLongPressGesture(minimumDuration: 0.5) {
-                onLongPress()
-            }
-    }
-}
-
-// MARK: - Helper Extensions
-
-extension CGPoint {
-    static func +(lhs: CGPoint, rhs: CGPoint) -> CGPoint {
-        CGPoint(x: lhs.x + rhs.x, y: lhs.y + rhs.y)
-    }
-    
-    static func /(lhs: CGPoint, rhs: CGFloat) -> CGPoint {
-        CGPoint(x: lhs.x / rhs, y: lhs.y / rhs)
-    }
-    
-    func distance(to point: CGPoint) -> CGFloat {
-        sqrt(pow(x - point.x, 2) + pow(y - point.y, 2))
+            .foregroundColor(.black)
+            .font(.system(size: 16, weight: .medium))
+            .frame(maxWidth: 280)
+            .padding(.horizontal, 20)
+            .padding(.bottom, 40)
     }
 }
 
