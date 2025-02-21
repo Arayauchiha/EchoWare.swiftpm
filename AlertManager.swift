@@ -11,8 +11,8 @@ class AlertManager: ObservableObject {
         queue.async { [weak self] in
             guard let self = self else { return }
             
-            // Only show alert if no alert is currently showing
-            if !self.showingSoundAlert {
+            // Only show new alert if no alert is currently showing
+            if !self.showingSoundAlert && !self.isProcessingAlert {
                 DispatchQueue.main.async {
                     self.currentAlertMessage = "\(category.icon) \(category.alertMessage)"
                     self.showingSoundAlert = true
@@ -33,8 +33,9 @@ class AlertManager: ObservableObject {
             guard let self = self else { return }
             
             DispatchQueue.main.async {
-                self.isProcessingAlert = false
                 self.showingSoundAlert = false
+                self.isProcessingAlert = false
+                self.currentAlertMessage = ""
             }
         }
     }
