@@ -3,30 +3,105 @@ import AVFoundation
 import SoundAnalysis
 import Combine
 import SwiftUI
+import UserNotifications
 
-class AudioRecorder: ObservableObject {
+class AudioRecorder: NSObject, ObservableObject, UNUserNotificationCenterDelegate {
     private var audioEngine = AVAudioEngine()
     private var streamAnalyzer: SNAudioStreamAnalyzer?
     private var resultsObserver: ResultsObserver?
     
     @Published var isDoorBellDetected: Bool = false
     @Published var doorbellConfidence: Double = 0.0
+    @AppStorage("alertStyle") private var alertStyle = 0
+    private var notificationCenter: UNUserNotificationCenter
+    
+    override init() {
+        self.notificationCenter = UNUserNotificationCenter.current()
+        super.init()
+        requestNotificationPermission()
+    }
+    
+    private func requestNotificationPermission() {
+        notificationCenter.requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+            if granted {
+                print("🔔 Notification permission granted")
+            } else {
+                print("❌ Notification permission denied")
+                if let error = error {
+                    print("Notification error: \(error.localizedDescription)")
+                }
+            }
+        }
+        
+        // Set notification delegate
+        notificationCenter.delegate = self
+    }
+    
+    private func sendDoorbellNotification() {
+        print("🔔 Attempting to send notification...")
+        
+        let content = UNMutableNotificationContent()
+        content.title = "Doorbell Detected!"
+        content.body = "Someone is at your door"
+        content.sound = .default
+        content.interruptionLevel = .timeSensitive
+        
+        let request = UNNotificationRequest(
+            identifier: UUID().uuidString,
+            content: content,
+            trigger: nil
+        )
+        
+        notificationCenter.add(request) { error in
+            if let error = error {
+                print("❌ Notification error: \(error.localizedDescription)")
+            } else {
+                print("✅ Notification scheduled successfully")
+            }
+        }
+    }
     
     // Inner class to handle sound classification results
-    private class ResultsObserver: NSObject, SNResultsObserving {
+    private class ResultsObserver: NSObject, SNResultsObserving, @unchecked Sendable {
         weak var parent: AudioRecorder?
+        private var lastNotificationTime: Date?
+        private let minimumTimeBetweenNotifications: TimeInterval = 2.0
         
         func request(_ request: SNRequest, didProduce result: SNResult) {
             guard let result = result as? SNClassificationResult else { return }
             
             // Look for doorbell classifications
-            let doorbellResult = result.classification(forIdentifier: "door_bell")
-            print(doorbellResult)
-            if let doorbellResult = doorbellResult {
-                DispatchQueue.global().async {
-                    self.parent?.doorbellConfidence = doorbellResult.confidence
-                    self.parent?.isDoorBellDetected = doorbellResult.confidence > 0.8
-                    print(doorbellResult.confidence)
+            if let doorbellResult = result.classification(forIdentifier: "door_bell") {
+                // Capture the confidence value before async
+                let confidence = doorbellResult.confidence
+                print("Raw doorbell confidence: \(confidence)")
+                
+                // Capture necessary values before async block
+                let observer = self
+                
+                DispatchQueue.main.async {
+                    observer.parent?.doorbellConfidence = confidence
+                    let isDetected = confidence > 0.8
+                    
+                    // Check if we should send a notification
+                    let currentTime = Date()
+                    let shouldNotify = isDetected && 
+                        (observer.lastNotificationTime == nil || 
+                         currentTime.timeIntervalSince(observer.lastNotificationTime!) >= observer.minimumTimeBetweenNotifications)
+                    
+                    if shouldNotify {
+                        print("🎯 High confidence doorbell detection: \(confidence)")
+                        observer.lastNotificationTime = currentTime
+                        observer.parent?.sendDoorbellNotification()
+                        
+                        // Add haptic feedback if enabled
+                        if observer.parent?.alertStyle != 0 {
+                            HapticManager.shared.playMediumImpact()
+                        }
+                    }
+                    
+                    observer.parent?.isDoorBellDetected = isDetected
+                    print("Doorbell confidence: \(confidence), isDetected: \(isDetected)")
                 }
             }
         }
@@ -101,6 +176,13 @@ class AudioRecorder: ObservableObject {
         }
         
         print("Audio recording stopped")
+    }
+    
+    func userNotificationCenter(_ center: UNUserNotificationCenter,
+                              willPresent notification: UNNotification,
+                              withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        // Show notification even when app is in foreground
+        completionHandler([.banner, .sound])
     }
 }
 
