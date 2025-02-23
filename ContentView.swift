@@ -12,8 +12,24 @@ class AudioRecorder: NSObject, ObservableObject, UNUserNotificationCenterDelegat
     
     @Published var isDoorBellDetected: Bool = false
     @Published var doorbellConfidence: Double = 0.0
+    @Published var detectedSounds: [String: (isDetected: Bool, confidence: Double)] = [:]
+    @AppStorage("enabledSoundCategories") private var enabledSoundCategories: String = "doorbell,emergency,dog,baby,knock" // Default all categories enabled
     @AppStorage("alertStyle") private var alertStyle = 0
+    @AppStorage("userName") private var userName = ""
     private var notificationCenter: UNUserNotificationCenter
+    
+    private let soundCategories = [
+        "doorbell": (name: "Doorbell Sounds", sounds: ["door_bell", "bell"]),
+        "emergency": (name: "Emergency Vehicles", sounds: ["ambulance_siren", "emergency_vehicle", "fire_engine_siren", "police_siren", "siren"]),
+        "dog": (name: "Dog Sounds", sounds: ["dog", "dog_bark", "dog_bow_wow"]),
+        "baby": (name: "Baby Sounds", sounds: ["baby_crying"]),
+        "knock": (name: "Knocking", sounds: ["knock"])
+    ]
+    
+    // Helper computed property to get enabled categories as array
+    private var enabledCategories: [String] {
+        enabledSoundCategories.split(separator: ",").map(String.init)
+    }
     
     override init() {
         self.notificationCenter = UNUserNotificationCenter.current()
@@ -37,14 +53,41 @@ class AudioRecorder: NSObject, ObservableObject, UNUserNotificationCenterDelegat
         notificationCenter.delegate = self
     }
     
-    private func sendDoorbellNotification() {
-        print("🔔 Attempting to send notification...")
+    private func sendSoundNotification(soundType: String, confidence: Double) {
+        // Check if the category containing this sound is enabled
+        let category = soundCategories.first { $0.value.sounds.contains(soundType) }?.key
+        guard let category = category, enabledCategories.contains(category) else { return }
+        
+        print("🔔 Attempting to send notification for \(soundType)...")
         
         let content = UNMutableNotificationContent()
-        content.title = "Doorbell Detected!"
-        content.body = "Someone is at your door"
         content.sound = .default
         content.interruptionLevel = .timeSensitive
+        
+        // Get user's name or default to "Friend"
+        let userTitle = userName.isEmpty ? "Friend" : userName
+        
+        // Customize notification based on sound category
+        switch category {
+        case "doorbell":
+            content.title = "Hey \(userTitle)! 🦊"
+            content.body = "Someone's at your door! Should I let them in?"
+        case "emergency":
+            content.title = "\(userTitle), Emergency Alert! 🦊"
+            content.body = "I hear emergency vehicles nearby. Please be careful!"
+        case "dog":
+            content.title = "Woof Alert! 🦊"
+            content.body = "\(userTitle), I hear a dog friend making noise nearby!"
+        case "baby":
+            content.title = "Hey \(userTitle)! 🦊"
+            content.body = "I hear a baby crying. They might need attention!"
+        case "knock":
+            content.title = "\(userTitle), Listen! 🦊"
+            content.body = "Someone's knocking at your door. Should I check who it is?"
+        default:
+            content.title = "Hey \(userTitle)! 🦊"
+            content.body = "I detected a \(soundType.replacingOccurrences(of: "_", with: " ")) sound!"
+        }
         
         let request = UNNotificationRequest(
             identifier: UUID().uuidString,
@@ -64,44 +107,55 @@ class AudioRecorder: NSObject, ObservableObject, UNUserNotificationCenterDelegat
     // Inner class to handle sound classification results
     private class ResultsObserver: NSObject, SNResultsObserving, @unchecked Sendable {
         weak var parent: AudioRecorder?
-        private var lastNotificationTime: Date?
+        private var lastNotificationTimes: [String: Date] = [:]
         private let minimumTimeBetweenNotifications: TimeInterval = 2.0
+        private let confidenceThreshold: Double = 0.8
         
         func request(_ request: SNRequest, didProduce result: SNResult) {
             guard let result = result as? SNClassificationResult else { return }
             
-            // Look for doorbell classifications
-            if let doorbellResult = result.classification(forIdentifier: "door_bell") {
-                // Capture the confidence value before async
-                let confidence = doorbellResult.confidence
-                print("Raw doorbell confidence: \(confidence)")
-                
-                // Capture necessary values before async block
-                let observer = self
-                
-                DispatchQueue.main.async {
-                    observer.parent?.doorbellConfidence = confidence
-                    let isDetected = confidence > 0.8
+            // Get all sounds we need to monitor from enabled categories
+            guard let parent = parent else { return }
+            let soundsToMonitor = parent.enabledCategories.flatMap { category in
+                parent.soundCategories[category]?.sounds ?? []
+            }
+            
+            // Process enabled sounds
+            for soundType in soundsToMonitor {
+                if let soundResult = result.classification(forIdentifier: soundType) {
+                    let confidence = soundResult.confidence
+                    print("Raw \(soundType) confidence: \(confidence)")
                     
-                    // Check if we should send a notification
-                    let currentTime = Date()
-                    let shouldNotify = isDetected && 
-                        (observer.lastNotificationTime == nil || 
-                         currentTime.timeIntervalSince(observer.lastNotificationTime!) >= observer.minimumTimeBetweenNotifications)
-                    
-                    if shouldNotify {
-                        print("🎯 High confidence doorbell detection: \(confidence)")
-                        observer.lastNotificationTime = currentTime
-                        observer.parent?.sendDoorbellNotification()
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self = self, let parent = self.parent else { return }
                         
-                        // Add haptic feedback if enabled
-                        if observer.parent?.alertStyle != 0 {
-                            HapticManager.shared.playMediumImpact()
+                        // Update the detection state
+                        let isDetected = confidence > self.confidenceThreshold
+                        parent.detectedSounds[soundType] = (isDetected, confidence)
+                        
+                        // Special handling for doorbell (maintaining backward compatibility)
+                        if soundType == "door_bell" {
+                            parent.isDoorBellDetected = isDetected
+                            parent.doorbellConfidence = confidence
+                        }
+                        
+                        // Check if we should send a notification
+                        let currentTime = Date()
+                        let shouldNotify = isDetected && 
+                            (self.lastNotificationTimes[soundType] == nil || 
+                             currentTime.timeIntervalSince(self.lastNotificationTimes[soundType]!) >= self.minimumTimeBetweenNotifications)
+                        
+                        if shouldNotify {
+                            print("🎯 High confidence \(soundType) detection: \(confidence)")
+                            self.lastNotificationTimes[soundType] = currentTime
+                            parent.sendSoundNotification(soundType: soundType, confidence: confidence)
+                            
+                            // Add haptic feedback if enabled
+                            if parent.alertStyle != 0 {
+                                HapticManager.shared.playMediumImpact()
+                            }
                         }
                     }
-                    
-                    observer.parent?.isDoorBellDetected = isDetected
-                    print("Doorbell confidence: \(confidence), isDetected: \(isDetected)")
                 }
             }
         }
@@ -330,6 +384,8 @@ struct StarFieldView: View {
 struct ContentView: View {
     var audioRecorder = AudioRecorder()
     @AppStorage("alertStyle") private var alertStyle = 0
+    @AppStorage("enabledSoundCategories") private var enabledSoundCategories: String = "doorbell,emergency,dog,baby,knock" // Default all categories enabled
+    @AppStorage("userName") private var userName = ""
     @State private var isAwake = false
     @State private var isTransitioning = false
     @State private var showSpeechBubble = false

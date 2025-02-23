@@ -3,18 +3,23 @@ import SwiftUI
 struct SettingsView: View {
     @AppStorage("userName") private var userName = ""
     @AppStorage("alertStyle") private var alertStyle = 0 // 0: Visual, 1: Haptic, 2: Both
-    @State private var selectedSoundsArray: [String] = []
+    @AppStorage("enabledSoundCategories") private var enabledSoundCategories: String = "doorbell,emergency,dog,baby,knock" // Default all categories enabled
     @State private var showingNamePrompt = false
     @State private var tempUserName = ""
     @State private var showingTestAlert = false
     
-    private let availableSounds = [
-        "doorbell": "🚪 Doorbell",
-        "name": "📣 Name Called",
-        "alarm": "🚨 Alarms",
-        "knock": "👆 Knocking",
-        "phone": "📱 Phone Ringing"
+    private let soundCategories = [
+        "doorbell": (name: "🚪 Doorbell Sounds", description: "Doorbell and bell sounds", sounds: ["door_bell", "bell"]),
+        "emergency": (name: "🚨 Emergency Vehicles", description: "Various emergency vehicle sirens", sounds: ["ambulance_siren", "emergency_vehicle", "fire_engine_siren", "police_siren", "siren"]),
+        "dog": (name: "🐕 Dog Sounds", description: "Various dog sounds", sounds: ["dog", "dog_bark", "dog_bow_wow"]),
+        "baby": (name: "👶 Baby Sounds", description: "Baby crying detection", sounds: ["baby_crying"]),
+        "knock": (name: "👆 Knocking", description: "Knocking sounds", sounds: ["knock"])
     ]
+    
+    // Helper computed property to get enabled categories as array
+    private var enabledCategoriesArray: [String] {
+        enabledSoundCategories.split(separator: ",").map(String.init)
+    }
     
     var body: some View {
         NavigationView {
@@ -40,17 +45,23 @@ struct SettingsView: View {
                 
                 // Sound Detection Section
                 Section {
-                    ForEach(Array(availableSounds.keys), id: \.self) { sound in
-                        Toggle(availableSounds[sound] ?? "", isOn: Binding(
-                            get: { selectedSoundsArray.contains(sound) },
-                            set: { isSelected in
-                                if isSelected {
-                                    selectedSoundsArray.append(sound)
+                    ForEach(Array(soundCategories.keys.sorted()), id: \.self) { category in
+                        let categoryInfo = soundCategories[category]!
+                        Toggle(categoryInfo.name, isOn: Binding(
+                            get: { enabledCategoriesArray.contains(category) },
+                            set: { isEnabled in
+                                var categories = enabledCategoriesArray
+                                if isEnabled {
+                                    if !categories.contains(category) {
+                                        categories.append(category)
+                                    }
                                 } else {
-                                    selectedSoundsArray.removeAll { $0 == sound }
+                                    categories.removeAll { $0 == category }
                                 }
+                                enabledSoundCategories = categories.joined(separator: ",")
                             }
                         ))
+                        .font(.system(.body, design: .rounded))
                     }
                 } header: {
                     Text("Sounds to Detect")
