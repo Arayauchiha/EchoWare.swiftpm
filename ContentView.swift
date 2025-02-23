@@ -5,6 +5,10 @@ import Combine
 import SwiftUI
 import UserNotifications
 
+extension Notification.Name {
+    static let soundDetected = Notification.Name("soundDetected")
+}
+
 class AudioRecorder: NSObject, ObservableObject, UNUserNotificationCenterDelegate {
     private var audioEngine = AVAudioEngine()
     private var streamAnalyzer: SNAudioStreamAnalyzer?
@@ -150,6 +154,9 @@ class AudioRecorder: NSObject, ObservableObject, UNUserNotificationCenterDelegat
                             self.lastNotificationTimes[soundType] = currentTime
                             parent.sendSoundNotification(soundType: soundType, confidence: confidence)
                             
+                            // Call onSoundDetected when sound is detected
+                            parent.onSoundDetected()
+                            
                             // Add haptic feedback if enabled
                             if parent.alertStyle != 0 {
                                 HapticManager.shared.playMediumImpact()
@@ -237,6 +244,10 @@ class AudioRecorder: NSObject, ObservableObject, UNUserNotificationCenterDelegat
                               withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
         // Show notification even when app is in foreground
         completionHandler([.banner, .sound])
+    }
+
+    func onSoundDetected() {
+        NotificationCenter.default.post(name: .soundDetected, object: nil)
     }
 }
 
@@ -395,6 +406,7 @@ struct ContentView: View {
     @State private var showPlayer = false
     @State private var indicatorOpacity: Double = 0
     @State private var stars: [Star] = []
+    @State private var shouldPauseMusic = false
     
     var body: some View {
         NavigationView {
@@ -418,7 +430,7 @@ struct ContentView: View {
                                         Color.clear
                                     ],
                                     startPoint: .top,
-                                    endPoint: .bottom
+                                    endPoint: .bottom // Fixed: changed '..bottom' to '.bottom'// Fixed: changed '..bottom' to '.bottom'
                                 )
                             )
                     } else {
@@ -536,7 +548,7 @@ struct ContentView: View {
                             .gesture(
                                 DragGesture(minimumDistance: 50)
                                     .onEnded { gesture in
-                                        if gesture.translation.height < -50 {
+                                        if (gesture.translation.height < -50) {
                                             showPlayer = true
                                         }
                                     }
@@ -607,18 +619,7 @@ struct ContentView: View {
                 }
             }
             .fullScreenCover(isPresented: $showPlayer) {
-                NavigationView {
-                    PlayerView()
-                        .navigationTitle("Test Sounds")
-                        .navigationBarTitleDisplayMode(.inline)
-                        .toolbar {
-                            ToolbarItem(placement: .navigationBarLeading) {
-                                Button("Done") {
-                                    showPlayer = false
-                                }
-                            }
-                        }
-                }
+                PlayerView(shouldPauseFromDetection: $shouldPauseMusic)
             }
             .navigationTitle("EchoWare")
             .toolbar {
@@ -634,6 +635,17 @@ struct ContentView: View {
                 let screenBounds = UIScreen.main.bounds
                 stars = (0..<100).map { _ in
                     Star.random(in: screenBounds)
+                }
+                
+                // Add notification observer without weak self
+                NotificationCenter.default.addObserver(
+                    forName: .soundDetected,
+                    object: nil,
+                    queue: .main
+                ) { _ in
+                    Task { @MainActor in
+                        onSoundDetected()
+                    }
                 }
             }
         }
@@ -734,10 +746,22 @@ struct ContentView: View {
         }
     }
     
+    @MainActor
     private func onSoundDetected() {
         if alertStyle != 0 {
             Task {
                 HapticManager.shared.playWarning()
+            }
+        }
+        
+        withAnimation {
+            shouldPauseMusic = true
+        }
+        
+        // Reset after delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            withAnimation {
+                shouldPauseMusic = false
             }
         }
     }

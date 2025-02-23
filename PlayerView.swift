@@ -2,16 +2,20 @@ import SwiftUI
 import AVFoundation
 
 struct PlayerView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var shouldPauseFromDetection: Bool
     @State private var isPlaying = false
     @State private var progress: Double = 0
-    @State private var currentTime: TimeInterval = 0
-    @State private var duration: TimeInterval = 0
     @State private var volume: Double = 0.5
+    @State private var currentTime: TimeInterval = 0
+    @State private var duration: TimeInterval = 180 // 3 minutes demo duration
+    
+    private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     
     var body: some View {
-        NavigationView {
+        NavigationView {  // Add this NavigationView
             VStack(spacing: 30) {
-                // Album Art / Visualization
+                // Album Art
                 ZStack {
                     Circle()
                         .fill(Color.purple.opacity(0.1))
@@ -23,7 +27,7 @@ struct PlayerView: View {
                 }
                 .padding(.top, 40)
                 
-                // Song Title and Artist
+                // Song Info
                 VStack(spacing: 8) {
                     Text("Test Sound")
                         .font(.title2)
@@ -49,23 +53,23 @@ struct PlayerView: View {
                 
                 // Playback Controls
                 HStack(spacing: 40) {
-                    Button(action: {
-                        // Previous
-                    }) {
+                    Button(action: {}) {
                         Image(systemName: "backward.fill")
                             .font(.title)
                     }
                     
                     Button(action: {
-                        isPlaying.toggle()
+                        withAnimation {
+                            if (!shouldPauseFromDetection) {
+                                isPlaying.toggle()
+                            }
+                        }
                     }) {
                         Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
                             .font(.system(size: 65))
                     }
                     
-                    Button(action: {
-                        // Next
-                    }) {
+                    Button(action: {}) {
                         Image(systemName: "forward.fill")
                             .font(.title)
                     }
@@ -99,7 +103,30 @@ struct PlayerView: View {
                 
                 Spacer()
             }
-            .navigationTitle("Player")
+            .navigationBarTitleDisplayMode(.inline)
+            .navigationTitle("Test Sounds")
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+        .onChange(of: shouldPauseFromDetection) { shouldPause in
+            if shouldPause {
+                withAnimation {
+                    isPlaying = false
+                    currentTime = 0
+                    progress = 0
+                }
+            }
+        }
+        .onReceive(timer) { _ in
+            if isPlaying && !shouldPauseFromDetection {
+                currentTime = min(currentTime + 1, duration)
+                progress = currentTime / duration
+            }
         }
     }
     
@@ -109,7 +136,3 @@ struct PlayerView: View {
         return String(format: "%d:%02d", minutes, seconds)
     }
 }
-
-#Preview {
-    PlayerView()
-} 
