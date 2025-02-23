@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct SettingsView: View {
+    @Environment(\.dismiss) private var dismiss
     @AppStorage("userName") private var userName = ""
     @AppStorage("notificationStyle") private var notificationStyle = 0 // 0: Visual + Haptic, 1: Visual Only
     @AppStorage("enabledSoundCategories") private var enabledSoundCategories: String = "doorbell,emergency,dog,baby,knock"
@@ -62,6 +63,15 @@ struct SettingsView: View {
             }
         }
         .navigationTitle("Settings")
+        .navigationBarItems(trailing: Button("Done") {
+            dismiss()
+        })
+        .onAppear {
+            // Reset categories if it's first launch
+            if enabledSoundCategories.isEmpty {
+                enabledSoundCategories = "" // Ensure all toggles start off
+            }
+        }
     }
     
     private func bindingForCategory(_ category: String) -> Binding<Bool> {

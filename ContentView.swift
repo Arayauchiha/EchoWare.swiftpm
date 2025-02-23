@@ -393,6 +393,9 @@ struct StarFieldView: View {
 }
 
 struct ContentView: View {
+    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
+    @State private var showSettings = false
+    
     var audioRecorder = AudioRecorder()
     @AppStorage("alertStyle") private var alertStyle = 0
     @AppStorage("enabledSoundCategories") private var enabledSoundCategories: String = "doorbell,emergency,dog,baby,knock" // Default all categories enabled
@@ -409,244 +412,268 @@ struct ContentView: View {
     @State private var shouldPauseMusic = false
     
     var body: some View {
-        NavigationView {
-            ZStack {
-                GeometryReader { geometry in
-                    // Background images
-                    if isAwake {
-                        Image("dayBG")
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: geometry.size.width, height: geometry.size.height)
-                            .clipped()
-                            .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
-                            .transition(.opacity)
-                            .overlay(
-                                // Daytime atmosphere enhancement
-                                LinearGradient(
-                                    colors: [
-                                        Color(red: 0.6, green: 0.8, blue: 1.0).opacity(0.3),
-                                        Color(red: 0.7, green: 0.9, blue: 1.0).opacity(0.2),
-                                        Color.clear
-                                    ],
-                                    startPoint: .top,
-                                    endPoint: .bottom // Fixed: changed '..bottom' to '.bottom'// Fixed: changed '..bottom' to '.bottom'
-                                )
-                            )
-                    } else {
-                        ZStack {
-                            Image("pixelcut-export")
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                                .frame(width: geometry.size.width, height: geometry.size.height)
-                                .clipped()
-                                .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
-                                .transition(.opacity)
-                            
-                            StarFieldView(stars: stars)
-                                .frame(width: geometry.size.width, height: geometry.size.height)
-                                .clipShape(
-                                    Rectangle()
-                                        .size(
-                                            width: geometry.size.width,
-                                            height: geometry.size.height * 0.6
-                                        )
-                                )
-                            
-                            // Night atmosphere enhancement
-                            LinearGradient(
-                                colors: [
-                                    Color(red: 0.1, green: 0.2, blue: 0.4).opacity(0.3),
-                                    Color(red: 0.1, green: 0.2, blue: 0.3).opacity(0.2),
-                                    Color.clear
-                                ],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                        }
-                    }
-                    
-                    // Moon/Sun Container with enhanced glow
+        ZStack {
+            if hasCompletedOnboarding {
+                NavigationView {
                     ZStack {
-                        // Base celestial body
-                        Circle()
-                            .fill(
-                                RadialGradient(
-                                    colors: [
-                                        isAwake ? Color.yellow : .white,
-                                        isAwake ? Color.orange.opacity(0.8) : .white.opacity(0.6),
-                                        .clear
-                                    ],
-                                    center: .center,
-                                    startRadius: isAwake ? 20 : 15,
-                                    endRadius: isAwake ? 100 : 60
-                                )
-                            )
-                            .frame(width: isAwake ? 80 : 60, height: isAwake ? 80 : 60)
+                        GeometryReader { geometry in
+                            // Background images
+                            if isAwake {
+                                Image("dayBG")
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fill)
+                                    .frame(width: geometry.size.width, height: geometry.size.height)
+                                    .clipped()
+                                    .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
+                                    .transition(.opacity)
+                                    .overlay(
+                                        // Daytime atmosphere enhancement
+                                        LinearGradient(
+                                            colors: [
+                                                Color(red: 0.6, green: 0.8, blue: 1.0).opacity(0.3),
+                                                Color(red: 0.7, green: 0.9, blue: 1.0).opacity(0.2),
+                                                Color.clear
+                                            ],
+                                            startPoint: .top,
+                                            endPoint: .bottom // Fixed: changed '..bottom' to '.bottom'// Fixed: changed '..bottom' to '.bottom'
+                                        )
+                                    )
+                            } else {
+                                ZStack {
+                                    Image("pixelcut-export")
+                                        .resizable()
+                                        .aspectRatio(contentMode: .fill)
+                                        .frame(width: geometry.size.width, height: geometry.size.height)
+                                        .clipped()
+                                        .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
+                                        .transition(.opacity)
+                                    
+                                    StarFieldView(stars: stars)
+                                        .frame(width: geometry.size.width, height: geometry.size.height)
+                                        .clipShape(
+                                            Rectangle()
+                                                .size(
+                                                    width: geometry.size.width,
+                                                    height: geometry.size.height * 0.6
+                                                )
+                                        )
+                                    
+                                    // Night atmosphere enhancement
+                                    LinearGradient(
+                                        colors: [
+                                            Color(red: 0.1, green: 0.2, blue: 0.4).opacity(0.3),
+                                            Color(red: 0.1, green: 0.2, blue: 0.3).opacity(0.2),
+                                            Color.clear
+                                        ],
+                                        startPoint: .top,
+                                        endPoint: .bottom
+                                    )
+                                }
+                            }
                             
-                        // Inner glow
-                        Circle()
-                            .fill(
-                                RadialGradient(
-                                    colors: [
-                                        isAwake ? Color.yellow.opacity(0.8) : .white.opacity(0.8),
-                                        isAwake ? Color.orange.opacity(0.4) : .white.opacity(0.4),
-                                        .clear
-                                    ],
-                                    center: .center,
-                                    startRadius: isAwake ? 10 : 5,
-                                    endRadius: isAwake ? 80 : 60
-                                )
+                            // Moon/Sun Container with enhanced glow
+                            ZStack {
+                                // Base celestial body
+                                Circle()
+                                    .fill(
+                                        RadialGradient(
+                                            colors: [
+                                                isAwake ? Color.yellow : .white,
+                                                isAwake ? Color.orange.opacity(0.8) : .white.opacity(0.6),
+                                                .clear
+                                            ],
+                                            center: .center,
+                                            startRadius: isAwake ? 20 : 15,
+                                            endRadius: isAwake ? 100 : 60
+                                        )
+                                    )
+                                    .frame(width: isAwake ? 80 : 60, height: isAwake ? 80 : 60)
+                                    
+                                // Inner glow
+                                Circle()
+                                    .fill(
+                                        RadialGradient(
+                                            colors: [
+                                                isAwake ? Color.yellow.opacity(0.8) : .white.opacity(0.8),
+                                                isAwake ? Color.orange.opacity(0.4) : .white.opacity(0.4),
+                                                .clear
+                                            ],
+                                            center: .center,
+                                            startRadius: isAwake ? 10 : 5,
+                                            endRadius: isAwake ? 80 : 60
+                                        )
+                                    )
+                                    .blur(radius: 15)
+                                    .frame(width: isAwake ? 140 : 120, height: isAwake ? 140 : 120)
+                                    
+                                // Outer glow
+                                Circle()
+                                    .fill(
+                                        RadialGradient(
+                                            colors: [
+                                                isAwake ? Color.yellow.opacity(0.4) : .white.opacity(0.4),
+                                                isAwake ? Color.orange.opacity(0.2) : .white.opacity(0.2),
+                                                .clear
+                                            ],
+                                            center: .center,
+                                            startRadius: isAwake ? 20 : 15,
+                                            endRadius: isAwake ? 100 : 80
+                                        )
+                                    )
+                                    .blur(radius: 20)
+                                    .frame(width: isAwake ? 180 : 160, height: isAwake ? 180 : 160)
+                            }
+                            .position(
+                                x: isAwake ? UIScreen.main.bounds.width * 0.8 : UIScreen.main.bounds.width * 0.2,
+                                y: UIScreen.main.bounds.height * 0.25
                             )
-                            .blur(radius: 15)
-                            .frame(width: isAwake ? 140 : 120, height: isAwake ? 140 : 120)
-                            
-                        // Outer glow
-                        Circle()
-                            .fill(
-                                RadialGradient(
-                                    colors: [
-                                        isAwake ? Color.yellow.opacity(0.4) : .white.opacity(0.4),
-                                        isAwake ? Color.orange.opacity(0.2) : .white.opacity(0.2),
-                                        .clear
-                                    ],
-                                    center: .center,
-                                    startRadius: isAwake ? 20 : 15,
-                                    endRadius: isAwake ? 100 : 80
-                                )
-                            )
-                            .blur(radius: 20)
-                            .frame(width: isAwake ? 180 : 160, height: isAwake ? 180 : 160)
-                    }
-                    .position(
-                        x: isAwake ? UIScreen.main.bounds.width * 0.8 : UIScreen.main.bounds.width * 0.2,
-                        y: UIScreen.main.bounds.height * 0.25
-                    )
-                    .animation(.easeInOut(duration: 0.6), value: isAwake)
-                }
-                .edgesIgnoringSafeArea(.all)
-                
-                // Swipe gesture area with visual indicator
-                if isAwake {
-                    VStack {
-                        Spacer()
-                        // Swipe indicator
-                        VStack(spacing: 4) {
-                            Image(systemName: "chevron.up")
-                                .font(.system(size: 20, weight: .medium))
-                            Text("Swipe up for test sounds")
-                                .font(.caption)
+                            .animation(.easeInOut(duration: 0.6), value: isAwake)
                         }
-                        .foregroundColor(.white.opacity(0.8))
-                        .padding(.bottom, 8)
-                        .opacity(indicatorOpacity)
+                        .edgesIgnoringSafeArea(.all)
                         
-                        Rectangle()
-                            .fill(Color.clear)
-                            .frame(height: 100)
-                            .contentShape(Rectangle())
-                            .gesture(
-                                DragGesture(minimumDistance: 50)
-                                    .onEnded { gesture in
-                                        if (gesture.translation.height < -50) {
-                                            showPlayer = true
-                                        }
-                                    }
-                            )
-                    }
-                }
-                
-                VStack {
-                    Spacer()
-                    
-                    // Speech bubble display
-                    if showSpeechBubble {
+                        // Swipe gesture area with visual indicator
                         if isAwake {
-                            HStack {
+                            VStack {
                                 Spacer()
-                                SpeechBubbleView(message: speechMessage)
-                                Spacer()
+                                // Swipe indicator
+                                VStack(spacing: 4) {
+                                    Image(systemName: "chevron.up")
+                                        .font(.system(size: 20, weight: .medium))
+                                    Text("Swipe up for test sounds")
+                                        .font(.caption)
+                                }
+                                .foregroundColor(.white.opacity(0.8))
+                                .padding(.bottom, 8)
+                                .opacity(indicatorOpacity)
+                                
+                                Rectangle()
+                                    .fill(Color.clear)
+                                    .frame(height: 100)
+                                    .contentShape(Rectangle())
+                                    .gesture(
+                                        DragGesture(minimumDistance: 50)
+                                            .onEnded { gesture in
+                                                if (gesture.translation.height < -50) {
+                                                    showPlayer = true
+                                                }
+                                            }
+                                    )
                             }
-                            .transition(.scale.combined(with: .opacity))
-                        } else {
-                            HStack {
-                                Spacer()
-                                SpeechBubbleView(message: "Time for me to rest! 😴")
-                                Spacer()
-                            }
-                            .transition(.scale.combined(with: .opacity))
                         }
-                    } else if !isAwake && isFirstTime {
-                        HStack {
+                        
+                        VStack {
                             Spacer()
-                            SpeechBubbleView(message: "Hey! 👋 Tap me to wake me up and I'll guard your space! 🦊")
-                            Spacer()
-                        }
-                        .transition(.scale.combined(with: .opacity))
-                        .onAppear {
-                            // Auto-dismiss first time message after 4 seconds
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
-                                withAnimation {
-                                    if !isAwake && isFirstTime {
-                                        isFirstTime = false
+                            
+                            // Speech bubble display
+                            if showSpeechBubble {
+                                if isAwake {
+                                    HStack {
+                                        Spacer()
+                                        SpeechBubbleView(message: speechMessage)
+                                        Spacer()
+                                    }
+                                    .transition(.scale.combined(with: .opacity))
+                                } else {
+                                    HStack {
+                                        Spacer()
+                                        SpeechBubbleView(message: "Time for me to rest! 😴")
+                                        Spacer()
+                                    }
+                                    .transition(.scale.combined(with: .opacity))
+                                }
+                            } else if !isAwake && isFirstTime {
+                                HStack {
+                                    Spacer()
+                                    SpeechBubbleView(message: "Hey! 👋 Tap me to wake me up and I'll guard your space! 🦊")
+                                    Spacer()
+                                }
+                                .transition(.scale.combined(with: .opacity))
+                                .onAppear {
+                                    // Auto-dismiss first time message after 4 seconds
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+                                        withAnimation {
+                                            if !isAwake && isFirstTime {
+                                                isFirstTime = false
+                                            }
+                                        }
                                     }
                                 }
                             }
+                            
+                            // Fox container
+                            ZStack {
+                                Ellipse()
+                                    .fill(Color.black.opacity(0.5))
+                                    .frame(width: 140, height: 25)
+                                    .blur(radius: 5)
+                                    .offset(y: 65)
+                                
+                                if isAwake {
+                                    ObservingFoxView(onLongPress: sleepFox)
+                                        .frame(width: 160, height: 160)
+                                        .offset(y: 30)
+                                } else {
+                                    SleepingFoxView(onTap: awakeFox)
+                                        .frame(width: 160, height: 160)
+                                        .offset(y: 30)
+                                }
+                            }
+                            .frame(height: 180)
+                            .padding(.bottom, 138)
+                            .zIndex(1)
                         }
                     }
-                    
-                    // Fox container
-                    ZStack {
-                        Ellipse()
-                            .fill(Color.black.opacity(0.5))
-                            .frame(width: 140, height: 25)
-                            .blur(radius: 5)
-                            .offset(y: 65)
+                    .fullScreenCover(isPresented: $showPlayer) {
+                        PlayerView(shouldPauseFromDetection: $shouldPauseMusic)
+                    }
+                    .navigationTitle("EchoWare")
+                    .navigationBarTitleDisplayMode(.large)
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarTrailing) {
+                            Button(action: {
+                                showSettings.toggle()
+                            }) {
+                                Image(systemName: "gearshape.fill")
+                                    .foregroundColor(isAwake ? .black : .white)
+                            }
+                        }
+                    }
+                    .onAppear {
+                        // Generate random stars
+                        let screenBounds = UIScreen.main.bounds
+                        stars = (0..<100).map { _ in
+                            Star.random(in: screenBounds)
+                        }
                         
-                        if isAwake {
-                            ObservingFoxView(onLongPress: sleepFox)
-                                .frame(width: 160, height: 160)
-                                .offset(y: 30)
-                        } else {
-                            SleepingFoxView(onTap: awakeFox)
-                                .frame(width: 160, height: 160)
-                                .offset(y: 30)
+                        // Add notification observer without weak self
+                        NotificationCenter.default.addObserver(
+                            forName: .soundDetected,
+                            object: nil,
+                            queue: .main
+                        ) { _ in
+                            Task { @MainActor in
+                                onSoundDetected()
+                            }
                         }
                     }
-                    .frame(height: 180)
-                    .padding(.bottom, 138)
-                    .zIndex(1)
                 }
-            }
-            .fullScreenCover(isPresented: $showPlayer) {
-                PlayerView(shouldPauseFromDetection: $shouldPauseMusic)
-            }
-            .navigationTitle("EchoWare")
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    NavigationLink(destination: SettingsView()) {
-                        Image(systemName: "gearshape.fill")
-                            .foregroundColor(isAwake ? .black : .white)
+            } else {
+                OnboardingView(showOnboarding: Binding(
+                    get: { !hasCompletedOnboarding },
+                    set: { value in
+                        withAnimation {
+                            hasCompletedOnboarding = !value
+                            if hasCompletedOnboarding {
+                                showSettings = true
+                            }
+                        }
                     }
-                }
+                ))
             }
-            .onAppear {
-                // Generate random stars
-                let screenBounds = UIScreen.main.bounds
-                stars = (0..<100).map { _ in
-                    Star.random(in: screenBounds)
-                }
-                
-                // Add notification observer without weak self
-                NotificationCenter.default.addObserver(
-                    forName: .soundDetected,
-                    object: nil,
-                    queue: .main
-                ) { _ in
-                    Task { @MainActor in
-                        onSoundDetected()
-                    }
-                }
+        }
+        .sheet(isPresented: $showSettings) {
+            NavigationView {
+                SettingsView()
             }
         }
     }
@@ -748,7 +775,7 @@ struct ContentView: View {
     
     @MainActor
     private func onSoundDetected() {
-        if alertStyle != 0 {
+        if (alertStyle != 0) {
             Task {
                 HapticManager.shared.playWarning()
             }
