@@ -641,7 +641,7 @@ struct ContentView: View {
                     .onAppear {
                         // Generate random stars
                         let screenBounds = UIScreen.main.bounds
-                        stars = (0..<100).map { _ in
+                        stars = (0..<50).map { _ in  // Reduced from 100 to 50 stars
                             Star.random(in: screenBounds)
                         }
                         

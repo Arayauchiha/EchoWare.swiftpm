@@ -2,7 +2,7 @@ import SwiftUI
 import AVFoundation
 
 struct PlayerView: View {
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.dismiss) private var dismiss  // Add this line
     @Binding var shouldPauseFromDetection: Bool
     @State private var isPlaying = false
     @State private var progress: Double = 0
