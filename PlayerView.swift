@@ -1,12 +1,78 @@
 import SwiftUI
 import AVFoundation
 
+@MainActor
+final class AudioPlayerManager: ObservableObject, @unchecked Sendable {
+    static let shared = AudioPlayerManager()
+    @Published var isPlaying = false
+    @Published var wasPlayingBeforePause = false
+    @Published var currentTime: TimeInterval = 0
+    @Published var duration: TimeInterval = 180 // 3 minutes demo duration
+    
+    private var timer: Timer?
+    
+    private init() {
+        // Start playing by default when initialized
+        startPlaying()
+    }
+    
+    func startPlaying() {
+        isPlaying = true
+        startTimer()
+    }
+    
+    func pauseForNotification() {
+        if isPlaying {
+            wasPlayingBeforePause = true
+            isPlaying = false
+            stopTimer()
+        }
+    }
+    
+    func resumeIfNeeded() {
+        if wasPlayingBeforePause {
+            isPlaying = true
+            wasPlayingBeforePause = false
+            startTimer()
+        }
+    }
+    
+    private func startTimer() {
+        stopTimer()
+        timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                if self.isPlaying {
+                    self.currentTime += 1
+                    if self.currentTime >= self.duration {
+                        self.currentTime = 0 // Loop back to start
+                    }
+                }
+            }
+        }
+    }
+    
+    private func stopTimer() {
+        timer?.invalidate()
+        timer = nil
+    }
+    
+    // Nonisolated cleanup that doesn't directly access timer property
+    nonisolated private func cleanup() {
+        Task { @MainActor [weak self] in
+            self?.stopTimer()
+        }
+    }
+    
+    deinit {
+        cleanup()
+    }
+}
+
 struct PlayerView: View {
-    @State private var isPlaying = false
-    @State private var progress: Double = 0
-    @State private var currentTime: TimeInterval = 0
-    @State private var duration: TimeInterval = 0
+    @StateObject private var playerManager = AudioPlayerManager.shared
     @State private var volume: Double = 0.5
+    @State private var showResumePrompt = false
     
     var body: some View {
         NavigationView {
@@ -16,6 +82,16 @@ struct PlayerView: View {
                     Circle()
                         .fill(Color.purple.opacity(0.1))
                         .frame(width: 250, height: 250)
+                    
+                    if playerManager.isPlaying {
+                        // Add pulsing animation when playing
+                        Circle()
+                            .stroke(Color.purple.opacity(0.3), lineWidth: 2)
+                            .frame(width: 260, height: 260)
+                            .scaleEffect(playerManager.isPlaying ? 1.2 : 1.0)
+                            .opacity(playerManager.isPlaying ? 0 : 1)
+                            .animation(Animation.easeInOut(duration: 1.0).repeatForever(autoreverses: false), value: playerManager.isPlaying)
+                    }
                     
                     Image(systemName: "music.note")
                         .font(.system(size: 100))
@@ -34,13 +110,21 @@ struct PlayerView: View {
                 
                 // Progress Bar
                 VStack(spacing: 8) {
-                    Slider(value: $progress)
-                        .tint(.purple)
+                    Slider(
+                        value: .init(
+                            get: { playerManager.currentTime },
+                            set: { newValue in
+                                playerManager.currentTime = newValue
+                            }
+                        ),
+                        in: 0...playerManager.duration
+                    )
+                    .tint(.purple)
                     
                     HStack {
-                        Text(formatTime(currentTime))
+                        Text(formatTime(playerManager.currentTime))
                         Spacer()
-                        Text(formatTime(duration))
+                        Text(formatTime(playerManager.duration))
                     }
                     .font(.caption)
                     .foregroundColor(.secondary)
@@ -50,23 +134,27 @@ struct PlayerView: View {
                 // Playback Controls
                 HStack(spacing: 40) {
                     Button(action: {
-                        // Previous
+                        playerManager.currentTime = max(0, playerManager.currentTime - 10)
                     }) {
-                        Image(systemName: "backward.fill")
+                        Image(systemName: "gobackward.10")
                             .font(.title)
                     }
                     
                     Button(action: {
-                        isPlaying.toggle()
+                        if playerManager.isPlaying {
+                            playerManager.pauseForNotification()
+                        } else {
+                            playerManager.startPlaying()
+                        }
                     }) {
-                        Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                        Image(systemName: playerManager.isPlaying ? "pause.circle.fill" : "play.circle.fill")
                             .font(.system(size: 65))
                     }
                     
                     Button(action: {
-                        // Next
+                        playerManager.currentTime = min(playerManager.duration, playerManager.currentTime + 10)
                     }) {
-                        Image(systemName: "forward.fill")
+                        Image(systemName: "goforward.10")
                             .font(.title)
                     }
                 }
@@ -100,6 +188,19 @@ struct PlayerView: View {
                 Spacer()
             }
             .navigationTitle("Player")
+            .onAppear {
+                playerManager.startPlaying()
+            }
+        }
+        .alert("Resume Music?", isPresented: $showResumePrompt) {
+            Button("Resume") {
+                playerManager.resumeIfNeeded()
+            }
+            Button("Keep Paused", role: .cancel) {
+                playerManager.wasPlayingBeforePause = false
+            }
+        } message: {
+            Text("Would you like to resume your music?")
         }
     }
     
@@ -112,4 +213,4 @@ struct PlayerView: View {
 
 #Preview {
     PlayerView()
-} 
+}

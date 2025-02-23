@@ -5,7 +5,7 @@ import Combine
 import SwiftUI
 import UserNotifications
 
-class AudioRecorder: NSObject, ObservableObject, UNUserNotificationCenterDelegate {
+class AudioRecorder: NSObject, ObservableObject, UNUserNotificationCenterDelegate, @unchecked Sendable {
     private var audioEngine = AVAudioEngine()
     private var streamAnalyzer: SNAudioStreamAnalyzer?
     private var resultsObserver: ResultsObserver?
@@ -53,12 +53,17 @@ class AudioRecorder: NSObject, ObservableObject, UNUserNotificationCenterDelegat
         notificationCenter.delegate = self
     }
     
-    private func sendSoundNotification(soundType: String, confidence: Double) {
+    private func sendSoundNotification(soundType: String, confidence: Double) async {
         // Check if the category containing this sound is enabled
         let category = soundCategories.first { $0.value.sounds.contains(soundType) }?.key
         guard let category = category, enabledCategories.contains(category) else { return }
         
         print("🔔 Attempting to send notification for \(soundType)...")
+        
+        // Pause music if playing
+        await MainActor.run {
+            AudioPlayerManager.shared.pauseForNotification()
+        }
         
         let content = UNMutableNotificationContent()
         content.sound = .default
@@ -67,26 +72,31 @@ class AudioRecorder: NSObject, ObservableObject, UNUserNotificationCenterDelegat
         // Get user's name or default to "Friend"
         let userTitle = userName.isEmpty ? "Friend" : userName
         
+        // Get the player state
+        let wasPlaying = await MainActor.run {
+            AudioPlayerManager.shared.wasPlayingBeforePause
+        }
+        
         // Customize notification based on sound category
         switch category {
         case "doorbell":
             content.title = "Hey \(userTitle)! 🦊"
-            content.body = "Someone's at your door! Should I let them in?"
+            content.body = wasPlaying ? "I've paused your music because someone's at the door! Should I let them in?" : "Someone's at your door! Should I let them in?"
         case "emergency":
             content.title = "\(userTitle), Emergency Alert! 🦊"
-            content.body = "I hear emergency vehicles nearby. Please be careful!"
+            content.body = wasPlaying ? "I've paused your music because I hear emergency vehicles. Stay safe!" : "I hear emergency vehicles nearby. Please be careful!"
         case "dog":
             content.title = "Woof Alert! 🦊"
-            content.body = "\(userTitle), I hear a dog friend making noise nearby!"
+            content.body = wasPlaying ? "\(userTitle), I lowered your music because I hear a dog friend nearby!" : "\(userTitle), I hear a dog friend making noise nearby!"
         case "baby":
             content.title = "Hey \(userTitle)! 🦊"
-            content.body = "I hear a baby crying. They might need attention!"
+            content.body = wasPlaying ? "I've paused your music because I hear a baby crying. They might need attention!" : "I hear a baby crying. They might need attention!"
         case "knock":
             content.title = "\(userTitle), Listen! 🦊"
-            content.body = "Someone's knocking at your door. Should I check who it is?"
+            content.body = wasPlaying ? "I've paused your music because someone's knocking. Shall I check who it is?" : "Someone's knocking at your door. Should I check who it is?"
         default:
             content.title = "Hey \(userTitle)! 🦊"
-            content.body = "I detected a \(soundType.replacingOccurrences(of: "_", with: " ")) sound!"
+            content.body = wasPlaying ? "I've paused your music because I detected a \(soundType.replacingOccurrences(of: "_", with: " ")) sound!" : "I detected a \(soundType.replacingOccurrences(of: "_", with: " ")) sound!"
         }
         
         let request = UNNotificationRequest(
@@ -95,12 +105,12 @@ class AudioRecorder: NSObject, ObservableObject, UNUserNotificationCenterDelegat
             trigger: nil
         )
         
-        notificationCenter.add(request) { error in
-            if let error = error {
-                print("❌ Notification error: \(error.localizedDescription)")
-            } else {
-                print("✅ Notification scheduled successfully")
-            }
+        // Schedule notification and handle errors
+        do {
+            try await notificationCenter.add(request)
+            print("✅ Notification scheduled successfully")
+        } catch {
+            print("❌ Notification error: \(error.localizedDescription)")
         }
     }
     
@@ -126,33 +136,28 @@ class AudioRecorder: NSObject, ObservableObject, UNUserNotificationCenterDelegat
                     let confidence = soundResult.confidence
                     print("Raw \(soundType) confidence: \(confidence)")
                     
-                    DispatchQueue.main.async { [weak self] in
-                        guard let self = self, let parent = self.parent else { return }
+                    // Capture necessary values before async block
+                    let currentTime = Date()
+                    let shouldNotify = confidence > self.confidenceThreshold &&
+                        (self.lastNotificationTimes[soundType] == nil ||
+                         currentTime.timeIntervalSince(self.lastNotificationTimes[soundType]!) >= self.minimumTimeBetweenNotifications)
+                    
+                    if shouldNotify {
+                        // Update notification time before async work
+                        self.lastNotificationTimes[soundType] = currentTime
                         
-                        // Update the detection state
-                        let isDetected = confidence > self.confidenceThreshold
-                        parent.detectedSounds[soundType] = (isDetected, confidence)
+                        // Store reference before async work
+                        let parentRef = parent
+                        let alertStyle = parent.alertStyle
                         
-                        // Special handling for doorbell (maintaining backward compatibility)
-                        if soundType == "door_bell" {
-                            parent.isDoorBellDetected = isDetected
-                            parent.doorbellConfidence = confidence
-                        }
-                        
-                        // Check if we should send a notification
-                        let currentTime = Date()
-                        let shouldNotify = isDetected && 
-                            (self.lastNotificationTimes[soundType] == nil || 
-                             currentTime.timeIntervalSince(self.lastNotificationTimes[soundType]!) >= self.minimumTimeBetweenNotifications)
-                        
-                        if shouldNotify {
-                            print("🎯 High confidence \(soundType) detection: \(confidence)")
-                            self.lastNotificationTimes[soundType] = currentTime
-                            parent.sendSoundNotification(soundType: soundType, confidence: confidence)
+                        // Handle notification and haptic feedback in a detached task
+                        Task.detached { @Sendable in
+                            // Send notification
+                            await parentRef.sendSoundNotification(soundType: soundType, confidence: confidence)
                             
                             // Add haptic feedback if enabled
-                            if parent.alertStyle != 0 {
-                                HapticManager.shared.playMediumImpact()
+                            if alertStyle != 0 {
+                                await HapticManager.shared.playMediumImpact()
                             }
                         }
                     }
@@ -382,6 +387,7 @@ struct StarFieldView: View {
 }
 
 struct ContentView: View {
+    @StateObject private var audioInputManager = AudioInputManager.shared
     var audioRecorder = AudioRecorder()
     @AppStorage("alertStyle") private var alertStyle = 0
     @AppStorage("enabledSoundCategories") private var enabledSoundCategories: String = "doorbell,emergency,dog,baby,knock" // Default all categories enabled
@@ -398,7 +404,30 @@ struct ContentView: View {
     
     var body: some View {
         NavigationView {
-            ZStack {
+            VStack {
+                // Audio Input Status
+                VStack(spacing: 8) {
+                    HStack {
+                        Image(systemName: audioInputManager.isHeadphonesConnected ? "headphones" : "mic.fill")
+                            .foregroundColor(audioInputManager.isHeadphonesConnected ? .green : .orange)
+                        Text(audioInputManager.isHeadphonesConnected ? "Headphones Connected" : "Using Built-in Mic")
+                            .font(.subheadline)
+                    }
+                    .padding(.vertical, 8)
+                    .padding(.horizontal, 16)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Color.purple.opacity(0.1))
+                    )
+                    
+                    if !audioInputManager.isHeadphonesConnected {
+                        Text("🎧 Connect headphones for better sound detection")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .padding()
+                
                 GeometryReader { geometry in
                     // Background images
                     if isAwake {
@@ -635,6 +664,8 @@ struct ContentView: View {
                 stars = (0..<100).map { _ in
                     Star.random(in: screenBounds)
                 }
+                
+                setupAudio()
             }
         }
     }
@@ -739,6 +770,22 @@ struct ContentView: View {
             Task {
                 HapticManager.shared.playWarning()
             }
+        }
+    }
+    
+    private func setupAudio() {
+        // Configure audio session for both playback and recording
+        do {
+            let audioSession = AVAudioSession.sharedInstance()
+            try audioSession.setCategory(.playAndRecord, 
+                                          mode: .default,
+                                          options: [.defaultToSpeaker, .allowBluetooth])
+            try audioSession.setActive(true)
+            
+            // Always prefer built-in mic for better sound detection
+            AudioInputManager.shared.preferBuiltInMicWhenPossible()
+        } catch {
+            print("⚠️ Audio session setup failed: \(error)")
         }
     }
 }
