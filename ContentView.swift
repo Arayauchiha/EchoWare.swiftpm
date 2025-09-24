@@ -588,16 +588,6 @@ struct ContentView: View {
                                     Spacer()
                                 }
                                 .transition(.scale.combined(with: .opacity))
-                                .onAppear {
-                                    // Auto-dismiss first time message after 4 seconds
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
-                                        withAnimation {
-                                            if !isAwake && isFirstTime {
-                                                isFirstTime = false
-                                            }
-                                        }
-                                    }
-                                }
                             }
                             
                             // Fox container
@@ -716,7 +706,7 @@ struct ContentView: View {
                             }
                             
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                                speechMessage = "Want to see how I detect sounds? Swipe up to try some test sounds! 🎵"
+                                speechMessage = "Want to test me? Play a doorbell or other sounds from another device and I'll detect them! 🔔"
                                 withAnimation {
                                     showSpeechBubble = true
                                 }
